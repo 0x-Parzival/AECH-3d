@@ -20,8 +20,6 @@ func TestNewBlockAndHashGeneration(t *testing.T) {
 		t.Errorf("Expected b1.Timestamp to be non-zero, got zero")
 	}
 
-	// NewBlock uses time.Now(), so two blocks created sequentially will likely have different timestamps and thus hashes.
-	// We'll ensure this by sleeping for a tiny duration.
 	time.Sleep(1 * time.Nanosecond)
 	b2 := block.NewBlock(0, 0, 0, "genesis", txs)
 	if b1.Hash == b2.Hash {
@@ -32,27 +30,25 @@ func TestNewBlockAndHashGeneration(t *testing.T) {
 	if b1.Hash == b3.Hash {
 		t.Errorf("Expected b1.Hash (%s) and b3.Hash (%s) to be different for different inputs, but they are the same", b1.Hash, b3.Hash)
 	}
-
-	// Test that re-hashing the same block data (manually constructed) yields the same hash
-	// This is a bit more involved as NewBlock sets the timestamp internally.
-	// Instead, let's focus on GenerateHash's determinism if we can control all inputs.
-	// For now, the check that different inputs (b1 vs b3) yield different hashes is a good start.
 }
 
-// TestInsertAndGetBlock tests inserting and retrieving blocks from the plane.
+// TestInsertAndGetBlock tests inserting and retrieving blocks from the plane using Plane3D.
 func TestInsertAndGetBlock(t *testing.T) {
-	// Clear the Cube for a clean test environment
-	plane.Cube = make(map[int]map[int]map[int]block.Block3D)
-
+	p := plane.NewPlane()
 	testBlock := block.NewBlock(1, 2, 3, "prevhash", []block.Transaction{{Data: []byte("data")}})
-	err := plane.InsertBlock(testBlock.X, testBlock.Y, testBlock.Z, *testBlock)
+
+	// Initial add
+	err := p.AddBlock(testBlock.X, testBlock.Y, testBlock.Z, testBlock)
 	if err != nil {
-		t.Fatalf("InsertBlock failed: %v", err)
+		t.Fatalf("AddBlock failed for initial insert: %v", err)
 	}
 
-	retrievedBlock, found := plane.GetBlock(1, 2, 3)
-	if !found {
-		t.Fatalf("Expected block to be found at (1,2,3), but it was not")
+	retrievedBlock, err := p.GetBlock(1, 2, 3)
+	if err != nil {
+		t.Fatalf("Expected block to be found at (1,2,3), but GetBlock returned error: %v", err)
+	}
+	if retrievedBlock == nil {
+		t.Fatalf("Expected block to be non-nil at (1,2,3), but retrievedBlock was nil")
 	}
 	if retrievedBlock.Hash != testBlock.Hash {
 		t.Errorf("Expected retrievedBlock.Hash (%s) to be equal to testBlock.Hash (%s)", retrievedBlock.Hash, testBlock.Hash)
@@ -61,9 +57,29 @@ func TestInsertAndGetBlock(t *testing.T) {
 		t.Errorf("Expected retrievedBlock.Transactions to be DeepEqual to testBlock.Transactions")
 	}
 
-	_, found = plane.GetBlock(9, 9, 9)
-	if found {
-		t.Errorf("Expected no block to be found at (9,9,9), but it was")
+	// Test retrieval of non-existent block
+	nonExistentBlock, err := p.GetBlock(9, 9, 9)
+	if err == nil {
+		t.Errorf("Expected error when getting non-existent block at (9,9,9), but got nil error")
+	}
+	if nonExistentBlock != nil {
+		t.Errorf("Expected nonExistentBlock to be nil, but it was not")
+	}
+
+	// Test overwrite/duplicate add
+	anotherBlock := block.NewBlock(testBlock.X, testBlock.Y, testBlock.Z, "anotherprevhash", []block.Transaction{{Data: []byte("different data")}})
+	err = p.AddBlock(testBlock.X, testBlock.Y, testBlock.Z, anotherBlock)
+	if err == nil {
+		t.Errorf("Expected error when adding block to occupied coordinates (%d,%d,%d), but got nil", testBlock.X, testBlock.Y, testBlock.Z)
+	}
+
+	// Ensure the original block is still there and unchanged
+	originalBlockCheck, err := p.GetBlock(testBlock.X, testBlock.Y, testBlock.Z)
+	if err != nil {
+		t.Fatalf("GetBlock failed for original block after duplicate add attempt: %v", err)
+	}
+	if originalBlockCheck.Hash != testBlock.Hash {
+		t.Errorf("Original block hash changed after duplicate add attempt. Expected %s, got %s", testBlock.Hash, originalBlockCheck.Hash)
 	}
 }
 
@@ -80,32 +96,36 @@ func TestValidateBlock(t *testing.T) {
 		t.Errorf("Expected invalidBlock1 (empty hash) to be invalid, but it was valid")
 	}
 
-	// Based on current stub, negative coordinates make it invalid.
-	// NewBlock will generate a hash, so we don't need to worry about that part.
 	invalidBlock2 := block.NewBlock(-1, 0, 0, "prev", nil)
+	// ValidateBlock itself doesn't use IsValidPosition from plane, it checks block's own fields based on its current simple logic.
+	// The block.ValidateBlock currently only checks for Hash == "" or X < 0 || Y < 0 || Z < 0.
+	// NewBlock sets X,Y,Z so block.ValidateBlock will use these.
 	if block.ValidateBlock(*invalidBlock2) {
-		t.Errorf("Expected invalidBlock2 (X=-1) to be invalid, but it was valid. Hash: %s, X: %d", invalidBlock2.Hash, invalidBlock2.X)
+		t.Errorf("Expected invalidBlock2 (X=-1) to be invalid due to negative coordinate, but it was valid. Hash: %s, X: %d", invalidBlock2.Hash, invalidBlock2.X)
 	}
 }
 
-// TestGetNeighbors tests retrieving neighbors of a block.
-func TestGetNeighbors(t *testing.T) {
-	// Clear the Cube for a clean test environment
-	plane.Cube = make(map[int]map[int]map[int]block.Block3D)
+// TestListNeighbors tests retrieving neighbors of a block using Plane3D.
+func TestListNeighbors(t *testing.T) {
+	p := plane.NewPlane()
 
 	b000 := block.NewBlock(0, 0, 0, "genesis", nil)
+	time.Sleep(1 * time.Nanosecond) // Ensure distinct timestamps for distinct hashes
 	b100 := block.NewBlock(1, 0, 0, b000.Hash, nil)
+	time.Sleep(1 * time.Nanosecond)
 	b010 := block.NewBlock(0, 1, 0, b000.Hash, nil)
-	// Ensure distinct hashes for b100 and b010 even if timestamp resolution is low
-	time.Sleep(1 * time.Nanosecond) 
-	b010 = block.NewBlock(0, 1, 0, b000.Hash, nil)
 
+	if err := p.AddBlock(b000.X, b000.Y, b000.Z, b000); err != nil {
+		t.Fatalf("Failed to add b000: %v", err)
+	}
+	if err := p.AddBlock(b100.X, b100.Y, b100.Z, b100); err != nil {
+		t.Fatalf("Failed to add b100: %v", err)
+	}
+	if err := p.AddBlock(b010.X, b010.Y, b010.Z, b010); err != nil {
+		t.Fatalf("Failed to add b010: %v", err)
+	}
 
-	plane.InsertBlock(b000.X, b000.Y, b000.Z, *b000)
-	plane.InsertBlock(b100.X, b100.Y, b100.Z, *b100)
-	plane.InsertBlock(b010.X, b010.Y, b010.Z, *b010)
-
-	neighbors := plane.GetNeighbors(0, 0, 0)
+	neighbors := p.ListNeighbors(0, 0, 0)
 	if len(neighbors) != 2 {
 		t.Fatalf("Expected 2 neighbors for block (0,0,0), got %d", len(neighbors))
 	}
@@ -128,8 +148,39 @@ func TestGetNeighbors(t *testing.T) {
 		t.Errorf("Neighbor b010 (hash %s) not found in neighbors of (0,0,0)", b010.Hash)
 	}
 
-	isolatedNeighbors := plane.GetNeighbors(5, 5, 5)
+	// Test neighbors for a block with no neighbors
+	isolatedNeighbors := p.ListNeighbors(5, 5, 5)
 	if len(isolatedNeighbors) != 0 {
-		t.Errorf("Expected 0 neighbors for isolated block (5,5,5), got %d", len(isolatedNeighbors))
+		t.Errorf("Expected 0 neighbors for isolated coordinates (5,5,5), got %d", len(isolatedNeighbors))
+	}
+}
+
+func TestIsValidPosition(t *testing.T) {
+	p := plane.NewPlane() // Instantiate Plane3D
+
+	// Test cases for valid positions (non-negative coordinates)
+	validCoordinates := [][3]int{
+		{0, 0, 0},
+		{1, 2, 3},
+		{100, 100, 100},
+	}
+	for _, coord := range validCoordinates {
+		if !p.IsValidPosition(coord[0], coord[1], coord[2]) {
+			t.Errorf("Expected IsValidPosition(%d, %d, %d) to be true, but got false", coord[0], coord[1], coord[2])
+		}
+	}
+
+	// Test cases for invalid positions (negative coordinates)
+	invalidCoordinates := [][3]int{
+		{-1, 0, 0},
+		{0, -1, 0},
+		{0, 0, -1},
+		{-1, -1, -1},
+		{1, -5, 3},
+	}
+	for _, coord := range invalidCoordinates {
+		if p.IsValidPosition(coord[0], coord[1], coord[2]) {
+			t.Errorf("Expected IsValidPosition(%d, %d, %d) to be false, but got true", coord[0], coord[1], coord[2])
+		}
 	}
 }

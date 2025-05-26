@@ -1,44 +1,63 @@
 package plane
 
 import (
-	"aech/block"
 	"fmt"
+	"aech/block" // Assuming aech is the module name
 )
 
-// Cube stores Block3D objects in a 3D spatial grid.
-// Access blocks by Cube[x][y][z].
-var Cube = make(map[int]map[int]map[int]block.Block3D)
-
-// InsertBlock inserts a Block3D into the Cube at the specified coordinates.
-// It overwrites if a block already exists at the coordinates.
-func InsertBlock(x, y, z int, b block.Block3D) error {
-	if _, ok := Cube[x]; !ok {
-		Cube[x] = make(map[int]map[int]block.Block3D)
-	}
-	if _, ok := Cube[x][y]; !ok {
-		Cube[x][y] = make(map[int]block.Block3D)
-	}
-	Cube[x][y][z] = b
-	return nil // No specific error conditions handled for now
+// Plane3D struct holds blocks in a 3D grid using a map with string keys.
+type Plane3D struct {
+	Grid map[string]*block.Block3D
 }
 
-// GetBlock retrieves a Block3D from the Cube at the specified coordinates.
-// It returns the block and a boolean indicating if the block was found.
-func GetBlock(x, y, z int) (block.Block3D, bool) {
-	if _, ok := Cube[x]; !ok {
-		return block.Block3D{}, false
+// NewPlane is a constructor for Plane3D.
+func NewPlane() *Plane3D {
+	return &Plane3D{
+		Grid: make(map[string]*block.Block3D),
 	}
-	if _, ok := Cube[x][y]; !ok {
-		return block.Block3D{}, false
-	}
-	b, ok := Cube[x][y][z]
-	return b, ok
 }
 
-// GetNeighbors retrieves all existing adjacent blocks to the given coordinates.
-func GetNeighbors(x, y, z int) []block.Block3D {
-	var neighbors []block.Block3D
+// coordKey generates a unique string key for a given set of X, Y, Z coordinates.
+func coordKey(x, y, z int) string {
+	return fmt.Sprintf("%d_%d_%d", x, y, z)
+}
 
+// AddBlock adds a block to the Plane3D at the specified coordinates.
+// It returns an error if a block already exists at that position.
+func (p *Plane3D) AddBlock(x, y, z int, blk *block.Block3D) error {
+	key := coordKey(x, y, z)
+	if _, exists := p.Grid[key]; exists {
+		return fmt.Errorf("block already exists at (%d,%d,%d)", x, y, z)
+	}
+	// Ensure the block's internal coordinates match, if they are used.
+	// For this implementation, we assume the block passed is intended for these coordinates.
+	// If blk has X,Y,Z fields, they should ideally match x,y,z or be set here.
+	// blk.X, blk.Y, blk.Z = x, y, z // Example if block has these fields and they should be synced
+	p.Grid[key] = blk
+	return nil
+}
+
+// GetBlock retrieves a block from the Plane3D at the specified coordinates.
+// It returns an error if no block is found at that position.
+func (p *Plane3D) GetBlock(x, y, z int) (*block.Block3D, error) {
+	key := coordKey(x, y, z)
+	if blk, exists := p.Grid[key]; exists {
+		return blk, nil
+	}
+	return nil, fmt.Errorf("no block at (%d,%d,%d)", x, y, z)
+}
+
+// IsValidPosition checks if the given coordinates are valid for placing a block.
+// Currently, it only checks for non-negative coordinates.
+func (p *Plane3D) IsValidPosition(x, y, z int) bool {
+	// Basic validation: check for non-negative coordinates.
+	// More complex rules (e.g., connectivity to existing blocks, max plane dimensions) can be added later.
+	return x >= 0 && y >= 0 && z >= 0
+}
+
+// ListNeighbors retrieves all existing adjacent blocks to the given coordinates.
+func (p *Plane3D) ListNeighbors(x, y, z int) []*block.Block3D {
+	var neighbors []*block.Block3D
 	offsets := [][3]int{
 		{x + 1, y, z}, {x - 1, y, z}, // Right, Left
 		{x, y + 1, z}, {x, y - 1, z}, // Up, Down
@@ -46,16 +65,11 @@ func GetNeighbors(x, y, z int) []block.Block3D {
 	}
 
 	for _, off := range offsets {
-		if b, found := GetBlock(off[0], off[1], off[2]); found {
-			neighbors = append(neighbors, b)
+		// We use p.GetBlock which already handles key generation and existence checks.
+		// If a block exists at the offset, err will be nil.
+		if blk, err := p.GetBlock(off[0], off[1], off[2]); err == nil {
+			neighbors = append(neighbors, blk)
 		}
 	}
 	return neighbors
-}
-
-// PrintCoordinates is a placeholder function that might be used for debugging.
-// This is added to use the fmt import and avoid "imported and not used" error during potential linting/vetting.
-// This can be removed later if fmt is used by other functions or if error handling becomes more sophisticated.
-func PrintCoordinates(x, y, z int) {
-	fmt.Printf("Coordinates: X=%d, Y=%d, Z=%d\n", x, y, z)
 }

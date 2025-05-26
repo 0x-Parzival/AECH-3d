@@ -10,8 +10,10 @@ import (
 
 // TestNewBlockAndHashGeneration tests the creation of new blocks and hash generation logic.
 func TestNewBlockAndHashGeneration(t *testing.T) {
-	txs := []block.Transaction{{Data: []byte("tx1")}}
-	b1 := block.NewBlock(0, 0, 0, "genesis", txs)
+	// Use NewTransaction to create transactions
+	tx1 := block.NewTransaction("sender1", "receiver1", 10.0)
+	txs1 := []block.Transaction{*tx1}
+	b1 := block.NewBlock(0, 0, 0, "genesis", txs1)
 
 	if b1.Hash == "" {
 		t.Errorf("Expected b1.Hash to be non-empty, got empty")
@@ -21,12 +23,17 @@ func TestNewBlockAndHashGeneration(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Nanosecond)
-	b2 := block.NewBlock(0, 0, 0, "genesis", txs)
+	// Recreate txs1 for b2 if its timestamp matters for distinctness from b1's txs,
+	// or use the same txs1 if the block's timestamp is the primary differentiator.
+	// For this test, block timestamp difference is key.
+	b2 := block.NewBlock(0, 0, 0, "genesis", txs1)
 	if b1.Hash == b2.Hash {
 		t.Errorf("Expected b1.Hash (%s) and b2.Hash (%s) to be different due to different timestamps, but they are the same", b1.Hash, b2.Hash)
 	}
 
-	b3 := block.NewBlock(1, 0, 0, "genesis", []block.Transaction{{Data: []byte("tx2")}})
+	tx2 := block.NewTransaction("sender2", "receiver2", 20.0)
+	txs2 := []block.Transaction{*tx2}
+	b3 := block.NewBlock(1, 0, 0, "genesis", txs2)
 	if b1.Hash == b3.Hash {
 		t.Errorf("Expected b1.Hash (%s) and b3.Hash (%s) to be different for different inputs, but they are the same", b1.Hash, b3.Hash)
 	}
@@ -35,7 +42,9 @@ func TestNewBlockAndHashGeneration(t *testing.T) {
 // TestInsertAndGetBlock tests inserting and retrieving blocks from the plane using Plane3D.
 func TestInsertAndGetBlock(t *testing.T) {
 	p := plane.NewPlane()
-	testBlock := block.NewBlock(1, 2, 3, "prevhash", []block.Transaction{{Data: []byte("data")}})
+	tx3 := block.NewTransaction("sender3", "receiver3", 30.0)
+	txs3 := []block.Transaction{*tx3}
+	testBlock := block.NewBlock(1, 2, 3, "prevhash", txs3)
 
 	// Initial add
 	err := p.AddBlock(testBlock.X, testBlock.Y, testBlock.Z, testBlock)
@@ -67,7 +76,11 @@ func TestInsertAndGetBlock(t *testing.T) {
 	}
 
 	// Test overwrite/duplicate add
-	anotherBlock := block.NewBlock(testBlock.X, testBlock.Y, testBlock.Z, "anotherprevhash", []block.Transaction{{Data: []byte("different data")}})
+	tx4 := block.NewTransaction("sender4", "receiver4", 40.0)
+	txs4 := []block.Transaction{*tx4}
+	// Ensure anotherBlock has a different hash if that's part of the test logic for "original block unchanged" later
+	// For AddBlock, only coordinates matter for conflict. Hash/content difference is for other tests.
+	anotherBlock := block.NewBlock(testBlock.X, testBlock.Y, testBlock.Z, "anotherprevhash", txs4)
 	err = p.AddBlock(testBlock.X, testBlock.Y, testBlock.Z, anotherBlock)
 	if err == nil {
 		t.Errorf("Expected error when adding block to occupied coordinates (%d,%d,%d), but got nil", testBlock.X, testBlock.Y, testBlock.Z)

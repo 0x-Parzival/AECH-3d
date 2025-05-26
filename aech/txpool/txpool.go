@@ -1,3 +1,4 @@
+// Package txpool manages a pool of pending transactions.
 package txpool
 
 import (
@@ -75,11 +76,24 @@ func (tp *TxPool) GetPendingTransactions(count int) []block.Transaction {
 // RemoveTransactions removes a slice of transactions from the pool.
 // Transactions are identified by their IDs. If a transaction in the provided slice
 // is not found in the pool, it is silently ignored.
-func (tp *TxPool) RemoveTransactions(txsToRemove []block.Transaction) {
+// func (tp *TxPool) RemoveTransactions(txsToRemove []block.Transaction) {
+// 	tp.mu.Lock()
+// 	defer tp.mu.Unlock()
+//
+// 	for _, tx := range txsToRemove {
+// 		delete(tp.pending, tx.ID)
+// 	}
+// }
+
+// RemoveTransactionByID removes a single transaction from the pool by its ID.
+// It returns an error if the transaction ID is not found in the pool.
+func (tp *TxPool) RemoveTransactionByID(txID string) error {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 
-	for _, tx := range txsToRemove {
-		delete(tp.pending, tx.ID)
+	if _, exists := tp.pending[txID]; !exists {
+		return fmt.Errorf("transaction %s not found in pool", txID)
 	}
+	delete(tp.pending, txID)
+	return nil
 }

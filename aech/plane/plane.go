@@ -1,3 +1,4 @@
+// Package plane provides types and functions for managing the 3D spatial grid of blocks.
 package plane
 
 import (

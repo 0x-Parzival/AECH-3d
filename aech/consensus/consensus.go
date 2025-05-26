@@ -1,3 +1,4 @@
+// Package consensus implements the consensus mechanisms for the AECH blockchain.
 package consensus
 
 import (

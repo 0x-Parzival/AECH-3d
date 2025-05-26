@@ -1,0 +1,41 @@
+run:
+  timeout: 5m
+  # go: '1.21' # Specify your Go version if linting rules depend on it
+
+linters-settings:
+  govet:
+    # Enable shadowing check, can find subtle bugs.
+    check-shadowing: true 
+  # Add other linter-specific settings here if needed in the future.
+  # e.g.:
+  # errcheck:
+  #   check-type-assertions: true 
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    # stylecheck is a meta-linter, includes many useful style checks from https://staticcheck.io/docs/options#checks
+    # It's often good to enable, but can be noisy initially.
+    - stylecheck 
+    # Consider adding 'typecheck' if not implicitly run, ensures code compiles.
+    # - typecheck
+    # 'ineffassign' finds unused assignments.
+    - ineffassign
+    # 'gofmt' and 'goimports' ensure formatting. Often done by IDEs.
+    # - gofmt
+    # - goimports
+  # To run only a very fast set of linters, you can use 'fast: true' 
+  # and then only enable specific fast linters.
+  # fast: false 
+
+issues:
+  # Exclude default exclusions from golangci-lint. Set to true to only use your rules.
+  exclude-use-default: false 
+  # Maximum number of issues of the same type. 0 for unlimited.
+  max-same-issues: 0 
+  # Maximum number of issues per linter. 0 for unlimited.
+  max-issues-per-linter: 0

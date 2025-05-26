@@ -73,11 +73,12 @@ func TestTxPool_GetPendingTransactions(t *testing.T) {
     }
 }
 
-func TestTxPool_RemoveTransactions(t *testing.T) {
+func TestTxPool_RemoveTransactionByID(t *testing.T) { // Renamed from TestTxPool_RemoveTransactions
 	tp := NewTxPool()
 	tx1 := block.NewTransaction("s1", "r1", 10)
 	tx2 := block.NewTransaction("s2", "r2", 20)
 	tx3 := block.NewTransaction("s3", "r3", 30)
+
 	if err := tp.AddTransaction(*tx1); err != nil {
 		t.Fatalf("Error adding tx1 during setup: %v", err)
 	}
@@ -88,14 +89,35 @@ func TestTxPool_RemoveTransactions(t *testing.T) {
 		t.Fatalf("Error adding tx3 during setup: %v", err)
 	}
 
-	tp.RemoveTransactions([]block.Transaction{*tx1, *tx3})
+	// Remove tx1
+	err := tp.RemoveTransactionByID(tx1.ID)
+	if err != nil {
+		t.Errorf("Failed to remove tx1 by ID: %v", err)
+	}
+	if _, exists := tp.pending[tx1.ID]; exists {
+		t.Error("tx1 should have been removed from the pool")
+	}
+
+	// Remove tx3
+	err = tp.RemoveTransactionByID(tx3.ID)
+	if err != nil {
+		t.Errorf("Failed to remove tx3 by ID: %v", err)
+	}
+	if _, exists := tp.pending[tx3.ID]; exists {
+		t.Error("tx3 should have been removed from the pool")
+	}
+    
+    // Attempt to remove a non-existent ID
+    err = tp.RemoveTransactionByID("nonexistentID")
+    if err == nil {
+        t.Error("Expected error when trying to remove non-existent transaction ID, got nil")
+    }
+
+	// Check remaining transactions
 	if len(tp.pending) != 1 {
 		t.Errorf("Expected 1 pending transaction after removal, got %d", len(tp.pending))
 	}
 	if _, exists := tp.pending[tx2.ID]; !exists {
 		t.Error("tx2 should still be in the pool")
-	}
-	if _, exists := tp.pending[tx1.ID]; exists {
-		t.Error("tx1 should have been removed from the pool")
 	}
 }

@@ -1,3 +1,4 @@
+// Package block defines the structure and operations for blocks and transactions in the AECH system.
 package block
 
 import (
@@ -20,25 +21,25 @@ type Transaction struct {
 	Receiver string
 	// Amount is the value being transferred in the transaction.
 	Amount float64
-	// Timestamp is the time at which the transaction was created.
-	Timestamp time.Time
+	// Timestamp is the Unix nano timestamp of when the transaction was created.
+	Timestamp int64 // Changed from time.Time
 	// Signature is the cryptographic signature of the transaction, used for verification.
 	// In the current stub implementation, this is a dummy value.
-	Signature string
+	Signature []byte // Changed from string
 }
 
 // NewTransaction creates and returns a new Transaction instance.
 // It initializes the transaction with the sender, receiver, and amount,
-// sets the current timestamp, generates a unique ID, and signs the transaction (currently a stub).
+// sets the current timestamp (UnixNano), generates a unique ID, and signs the transaction (currently a stub).
 func NewTransaction(sender string, receiver string, amount float64) *Transaction {
 	tx := &Transaction{
 		Sender:    sender,
 		Receiver:  receiver,
 		Amount:    amount,
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixNano(), // Set Timestamp as int64
 	}
 	// Generate ID: SHA256(sender + receiver + amount + timestamp)
-	idData := fmt.Sprintf("%s%s%s%d", sender, receiver, strconv.FormatFloat(amount, 'f', -1, 64), tx.Timestamp.UnixNano())
+	idData := fmt.Sprintf("%s%s%s%d", sender, receiver, strconv.FormatFloat(amount, 'f', -1, 64), tx.Timestamp)
 	hash := sha256.Sum256([]byte(idData))
 	tx.ID = hex.EncodeToString(hash[:])
 
@@ -48,10 +49,11 @@ func NewTransaction(sender string, receiver string, amount float64) *Transaction
 
 // Sign sets a cryptographic signature for the transaction.
 // This is a stub implementation and currently sets a dummy signature.
+// The signature is stored as []byte.
 // It returns an error if signing fails (though in the stub, it always returns nil).
 func (tx *Transaction) Sign() error {
 	// Stub implementation
-	tx.Signature = "signed-" + tx.ID
+	tx.Signature = []byte("signed-" + tx.ID) // Store as []byte
 	return nil
 }
 
@@ -100,23 +102,33 @@ type Block3D struct {
 
 // GenerateHash calculates and sets the cryptographic hash for the Block3D instance.
 // The hash is derived from the block's coordinates (X,Y,Z), timestamp, previous hash,
-// and a concatenated string of all transaction IDs within the block.
+// and a comprehensive string representation of all transactions within the block.
 // The resulting hash is stored in the block's Hash field and also returned.
 func (b *Block3D) GenerateHash() string {
 	// Concatenate X, Y, Z, Timestamp, PreviousHash
 	dataString := fmt.Sprintf("%d%d%d%d%s", b.X, b.Y, b.Z, b.Timestamp.UnixNano(), b.PreviousHash)
 
-	// Concatenate all Transaction IDs
-	var txIDs []string
+	// Create a consistent string representation for each transaction
+	var transactionRepresentations []string
 	for _, tx := range b.Transactions {
-		txIDs = append(txIDs, tx.ID)
+		// including the new types for Timestamp and Signature.
+		txString := fmt.Sprintf("%s&S:%s&R:%s&A:%f&T:%d&Sig:%s", // Using '&' and field letters as separators
+			tx.ID,
+			tx.Sender,
+			tx.Receiver,
+			tx.Amount,
+			tx.Timestamp, // This is int64
+			hex.EncodeToString(tx.Signature), // Signature is []byte
+		)
+		transactionRepresentations = append(transactionRepresentations, txString)
 	}
-	allTxIDsString := strings.Join(txIDs, "-") // Join with a separator
+	// Join these transaction strings with another unique separator
+	allTransactionsString := strings.Join(transactionRepresentations, "||")
 
 	// Combine block data with transaction data
-	finalData := dataString + allTxIDsString
+	finalDataToHash := dataString + "||TXS||" + allTransactionsString // Add a clear separator for transactions part
 
-	hash := sha256.Sum256([]byte(finalData))
+	hash := sha256.Sum256([]byte(finalDataToHash))
 	b.Hash = hex.EncodeToString(hash[:]) // Set the block's hash
 	return b.Hash                       // Return the hash
 }

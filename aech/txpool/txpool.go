@@ -4,6 +4,7 @@ package txpool
 import (
 	"aech/block"
 	"fmt"
+	"log" // Added for logging
 	"sync"
 )
 
@@ -30,16 +31,21 @@ func NewTxPool() *TxPool {
 // It returns an error if the transaction is invalid or if it already exists in the pool.
 func (tp *TxPool) AddTransaction(tx block.Transaction) error {
 	if !tx.Validate() { // tx.Validate() currently always returns true (stubbed)
-		return fmt.Errorf("transaction %s failed validation", tx.ID)
+		err := fmt.Errorf("transaction %s failed validation", tx.ID)
+		log.Printf("Error adding transaction to pool: %v", err)
+		return err
 	}
 
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 
 	if _, exists := tp.pending[tx.ID]; exists {
-		return fmt.Errorf("transaction %s already exists in the pool", tx.ID)
+		err := fmt.Errorf("transaction %s already exists in the pool", tx.ID)
+		log.Printf("Error adding transaction to pool: %v", err)
+		return err
 	}
 	tp.pending[tx.ID] = tx
+	log.Printf("Transaction %s added to pool internally", tx.ID)
 	return nil
 }
 
@@ -92,8 +98,28 @@ func (tp *TxPool) RemoveTransactionByID(txID string) error {
 	defer tp.mu.Unlock()
 
 	if _, exists := tp.pending[txID]; !exists {
-		return fmt.Errorf("transaction %s not found in pool", txID)
+		err := fmt.Errorf("transaction %s not found in pool for removal", txID)
+		log.Printf("Error in RemoveTransactionByID: %v", err)
+		return err
 	}
 	delete(tp.pending, txID)
+	log.Printf("Transaction %s removed from pool", txID)
 	return nil
+}
+
+// GetAllTransactions returns all transactions currently in the pool.
+// It is thread-safe. If the pool is empty, it returns an empty slice.
+func (tp *TxPool) GetAllTransactions() []block.Transaction {
+	tp.mu.RLock()
+	defer tp.mu.RUnlock()
+
+	if len(tp.pending) == 0 {
+		return []block.Transaction{}
+	}
+
+	transactions := make([]block.Transaction, 0, len(tp.pending))
+	for _, tx := range tp.pending {
+		transactions = append(transactions, tx)
+	}
+	return transactions
 }

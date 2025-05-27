@@ -1,58 +1,341 @@
 package block
 
 import (
-	"reflect" // Added for DeepEqual
+	"bytes"
+	// "encoding/hex" // Not explicitly used in tests, but GenerateHash uses it.
+	"reflect"
 	"testing"
 	"time"
+	"fmt" // For more descriptive error messages if needed
 )
 
+// TestNewTransaction tests the creation of a new transaction.
 func TestNewTransaction(t *testing.T) {
-	tx := NewTransaction("sender1", "receiver1", 100.50)
+	t.Helper()
+	sender := "Alice"
+	receiver := "Bob"
+	amount := 10.5
+	tx := NewTransaction(sender, receiver, amount)
+
 	if tx == nil {
-		t.Fatal("NewTransaction returned nil")
+		t.Fatal("NewTransaction() returned nil")
 	}
-	if tx.ID == "" {
-		t.Error("Transaction ID is empty")
+	if tx.Sender != sender {
+		t.Errorf("Expected sender %s, got %s", sender, tx.Sender)
 	}
-	if tx.Timestamp <= 0 { // Updated assertion for int64 timestamp
-		t.Error("Timestamp should be positive nano seconds")
+	if tx.Receiver != receiver {
+		t.Errorf("Expected receiver %s, got %s", receiver, tx.Receiver)
 	}
-	expectedSig := []byte("signed-" + tx.ID) // Updated assertion for []byte signature
-	if !reflect.DeepEqual(tx.Signature, expectedSig) {
-		t.Errorf("Expected Signature %s, got %s", string(expectedSig), string(tx.Signature))
+	if tx.Amount != amount {
+		t.Errorf("Expected amount %f, got %f", amount, tx.Amount)
 	}
-	if tx.Sender != "sender1" || tx.Receiver != "receiver1" || tx.Amount != 100.50 {
-		t.Errorf("Transaction fields not set correctly: %+v", tx)
+	if tx.Timestamp == 0 {
+		t.Error("Timestamp was not set (is zero)")
+	}
+	if tx.Timestamp < 0 { // Technically time.Now().UnixNano() shouldn't be negative
+		t.Error("Timestamp is negative, expected positive value")
+	}
+	if len(tx.ID) == 0 {
+		t.Error("ID was not generated (is empty)")
+	}
+	// Check if signature is the dummy signature "signed-" + tx.ID
+	expectedSignature := []byte("signed-" + tx.ID)
+	if !bytes.Equal(tx.Signature, expectedSignature) {
+		t.Errorf("Expected signature '%s', got '%s'", expectedSignature, tx.Signature)
 	}
 }
 
-func TestTransaction_Validate(t *testing.T) {
-	tx := NewTransaction("s", "r", 1)
+// TestTransactionSign tests the Sign method of a transaction.
+// Since NewTransaction already calls Sign, this test primarily ensures direct calls to Sign also work as expected.
+func TestTransactionSign(t *testing.T) {
+	t.Helper()
+	// First, create a transaction using NewTransaction which calls Sign.
+	tx := NewTransaction("Charlie", "David", 20.0)
+	if tx == nil {
+		t.Fatal("NewTransaction returned nil, cannot proceed with TestTransactionSign")
+	}
+	originalSignature := make([]byte, len(tx.Signature))
+	copy(originalSignature, tx.Signature)
+
+	// Call Sign again
+	err := tx.Sign()
+	if err != nil {
+		t.Fatalf("tx.Sign() returned an error: %v", err)
+	}
+
+	// Ensure the signature remains the same dummy signature based on tx.ID
+	expectedSignature := []byte("signed-" + tx.ID)
+	if !bytes.Equal(tx.Signature, expectedSignature) {
+		t.Errorf("Expected signature '%s' after re-signing, got '%s'", expectedSignature, tx.Signature)
+	}
+	// And it should be the same as the original one if ID hasn't changed (which it shouldn't by Sign).
+	if !bytes.Equal(tx.Signature, originalSignature) {
+		t.Errorf("Signature changed after re-signing, expected '%s', got '%s'", originalSignature, tx.Signature)
+	}
+}
+
+// TestTransactionValidate tests the Validate method (currently a stub).
+func TestTransactionValidate(t *testing.T) {
+	t.Helper()
+	tx := NewTransaction("Eve", "Frank", 30.0)
+	if tx == nil {
+		t.Fatal("NewTransaction returned nil, cannot proceed with TestTransactionValidate")
+	}
 	if !tx.Validate() {
 		t.Error("tx.Validate() returned false, expected true for stub implementation")
 	}
+	// This test will need to be updated when Validate becomes more sophisticated.
 }
 
-func TestBlockGenerateHash_WithTransactions(t *testing.T) {
-	// Test that block hash changes with different transactions
-	tx1 := NewTransaction("s1", "r1", 10)
-	// Ensure tx2 is different enough to produce a different ID
-	time.Sleep(1 * time.Nanosecond) // Ensure timestamp difference for tx ID generation
-	tx2 := NewTransaction("s2", "r2", 20)
-
-	b1 := NewBlock(0, 0, 0, "prevHash", []Transaction{*tx1})
-	time.Sleep(1 * time.Nanosecond) // Ensure block timestamp difference
-	b2 := NewBlock(0, 0, 0, "prevHash", []Transaction{*tx2})
-	time.Sleep(1 * time.Nanosecond)
-	b4 := NewBlock(0, 0, 0, "prevHash", nil) // No transactions
-
-	if b1.Hash == b2.Hash {
-		t.Errorf("Blocks with different transactions have the same hash (b1, b2). b1: %s, b2: %s", b1.Hash, b2.Hash)
+// TestNewBlock tests the creation of a new block.
+func TestNewBlock(t *testing.T) {
+	t.Helper()
+	x, y, z := 1, 2, 3
+	previousHash := "somePreviousHash"
+	transactions := []Transaction{
+		*NewTransaction("Alice", "Bob", 1.0),
+		*NewTransaction("Bob", "Charlie", 2.0),
 	}
-	if b1.Hash == b4.Hash {
-		t.Error("Block with transaction has same hash as block without (b1, b4)")
+
+	block := NewBlock(x, y, z, previousHash, transactions)
+
+	if block == nil {
+		t.Fatal("NewBlock() returned nil")
 	}
-	if b2.Hash == b4.Hash {
-		t.Error("Block with different transaction has same hash as block without (b2, b4)")
+	if block.X != x || block.Y != y || block.Z != z {
+		t.Errorf("Expected coordinates (%d,%d,%d), got (%d,%d,%d)", x, y, z, block.X, block.Y, block.Z)
+	}
+	if block.PreviousHash != previousHash {
+		t.Errorf("Expected previousHash %s, got %s", previousHash, block.PreviousHash)
+	}
+	if !reflect.DeepEqual(block.Transactions, transactions) {
+		t.Errorf("Expected transactions %+v, got %+v", transactions, block.Transactions)
+	}
+	if block.Timestamp.IsZero() {
+		t.Error("Timestamp was not set for the block (is zero time)")
+	}
+	if len(block.Hash) == 0 {
+		t.Error("Block hash was not generated by NewBlock (is empty)")
 	}
 }
+
+// TestBlockGenerateHash tests the GenerateHash method of a block.
+func TestBlockGenerateHash(t *testing.T) {
+	t.Helper()
+
+	// Baseline transaction and block
+	tx1 := *NewTransaction("Sender1", "Receiver1", 10.0)
+	baseBlock := &Block3D{
+		X:            0,
+		Y:            0,
+		Z:            0,
+		Timestamp:    time.Now(), // Use a fixed time for reproducible base hash for some tests
+		PreviousHash: "0",
+		Transactions: []Transaction{tx1},
+	}
+	baseHash := baseBlock.GenerateHash()
+
+	if len(baseHash) == 0 {
+		t.Fatal("GenerateHash() returned an empty hash for baseBlock")
+	}
+	if baseBlock.Hash != baseHash {
+		t.Error("Block's hash field was not set by GenerateHash() for baseBlock")
+	}
+
+	t.Run("Determinism", func(t *testing.T) {
+		t.Helper()
+		// Re-generate hash with no changes, should be same
+		hashAgain := baseBlock.GenerateHash()
+		if baseHash != hashAgain {
+			t.Errorf("Generating hash twice with no changes resulted in different hashes: %s vs %s", baseHash, hashAgain)
+		}
+	})
+
+	t.Run("DifferentBlockContent", func(t *testing.T) {
+		t.Helper()
+		block2 := &Block3D{
+			X:            baseBlock.X,
+			Y:            baseBlock.Y,
+			Z:            baseBlock.Z + 1, // Different Z
+			Timestamp:    baseBlock.Timestamp,
+			PreviousHash: baseBlock.PreviousHash,
+			Transactions: baseBlock.Transactions,
+		}
+		hash2 := block2.GenerateHash()
+		if baseHash == hash2 {
+			t.Errorf("Different block content (Z coordinate) produced the same hash. Base: %s, New: %s", baseHash, hash2)
+		}
+	})
+
+	// --- Test sensitivity to transaction field changes ---
+
+	t.Run("TxSignatureChange", func(t *testing.T) {
+		t.Helper()
+		txForSigChange := *NewTransaction("SigSender", "SigReceiver", 50.0)
+		blockWithSigTx := &Block3D{
+			X: 0, Y: 0, Z: 0, Timestamp: time.Now(), PreviousHash: "prevSig",
+			Transactions: []Transaction{txForSigChange},
+		}
+		hashOriginalSig := blockWithSigTx.GenerateHash()
+
+		// Modify the signature
+		blockWithSigTx.Transactions[0].Signature = []byte("tampered-signature-" + blockWithSigTx.Transactions[0].ID)
+		hashTamperedSig := blockWithSigTx.GenerateHash()
+
+		if hashOriginalSig == hashTamperedSig {
+			t.Errorf("Changing transaction signature did not change block hash. Original: %s, Tampered: %s", hashOriginalSig, hashTamperedSig)
+		}
+	})
+	
+	createTestBlock := func(tx Transaction) *Block3D {
+		return &Block3D{
+			X:            1, Y: 1, Z: 1, Timestamp: time.Unix(1600000000, 0), PreviousHash: "commonPrevHash",
+			Transactions: []Transaction{tx},
+		}
+	}
+	
+	// Base transaction for field modification tests
+	// Ensure NewTransaction sets up ID, Timestamp, Signature properly
+	baseTxForFieldTests := *NewTransaction("BaseSender", "BaseReceiver", 100.0)
+	// To ensure the timestamp is fixed for these specific sub-tests, we can overwrite it AFTER NewTransaction
+	// This is to avoid test flakiness if NewTransaction takes slightly different times.
+	// However, GenerateHash uses the tx.Timestamp, so changing it SHOULD change the hash.
+	// For testing other fields, we want Timestamp to be constant.
+	// Let's create transactions specifically for each test to control this.
+
+	t.Run("TxIDChange", func(t *testing.T) {
+		t.Helper()
+		txA := *NewTransaction("SenderID", "ReceiverID", 10.0)
+		blockA := createTestBlock(txA)
+		hashA := blockA.GenerateHash()
+
+		txB := txA // Create a copy
+		txB.ID = "manually-changed-id-for-test" // Artificial change
+		blockB := createTestBlock(txB)
+		hashB := blockB.GenerateHash()
+
+		if hashA == hashB {
+			t.Errorf("Manually changing transaction ID did not change block hash. HashA: %s, HashB: %s", hashA, hashB)
+		}
+	})
+
+	t.Run("TxTimestampChange", func(t *testing.T) {
+		t.Helper()
+		// NewTransaction generates timestamp, so we create two distinct ones.
+		txA := *NewTransaction("SenderTime", "ReceiverTime", 20.0)
+		time.Sleep(10 * time.Millisecond) // Ensure timestamp difference
+		txB := *NewTransaction("SenderTime", "ReceiverTime", 20.0)
+
+		if txA.Timestamp == txB.Timestamp {
+			t.Fatalf("Timestamps for txA and txB are identical, test cannot proceed. This may indicate an issue with test setup or NewTransaction timing.")
+		}
+
+		blockA := createTestBlock(txA)
+		hashA := blockA.GenerateHash()
+		blockB := createTestBlock(txB)
+		hashB := blockB.GenerateHash()
+		
+		if hashA == hashB {
+			t.Errorf("Changing transaction Timestamp did not change block hash. HashA: %s (TS: %d), HashB: %s (TS: %d)", hashA, txA.Timestamp, hashB, txB.Timestamp)
+		}
+	})
+
+	t.Run("TxSenderChange", func(t *testing.T) {
+		t.Helper()
+		txA := *NewTransaction("SenderA", "ReceiverSame", 30.0)
+		txB := *NewTransaction("SenderB", "ReceiverSame", 30.0) // Different sender
+
+		blockA := createTestBlock(txA)
+		hashA := blockA.GenerateHash()
+		blockB := createTestBlock(txB)
+		hashB := blockB.GenerateHash()
+
+		if hashA == hashB {
+			t.Errorf("Changing transaction Sender did not change block hash. HashA: %s, HashB: %s", hashA, hashB)
+		}
+	})
+
+	t.Run("TxReceiverChange", func(t *testing.T) {
+		t.Helper()
+		txA := *NewTransaction("SenderSame", "ReceiverA", 40.0)
+		txB := *NewTransaction("SenderSame", "ReceiverB", 40.0) // Different receiver
+		
+		blockA := createTestBlock(txA)
+		hashA := blockA.GenerateHash()
+		blockB := createTestBlock(txB)
+		hashB := blockB.GenerateHash()
+
+		if hashA == hashB {
+			t.Errorf("Changing transaction Receiver did not change block hash. HashA: %s, HashB: %s", hashA, hashB)
+		}
+	})
+
+	t.Run("TxAmountChange", func(t *testing.T) {
+		t.Helper()
+		txA := *NewTransaction("SenderSame", "ReceiverSame", 60.0)
+		txB := *NewTransaction("SenderSame", "ReceiverSame", 60.0000001) // Different amount
+		
+		blockA := createTestBlock(txA)
+		hashA := blockA.GenerateHash()
+		blockB := createTestBlock(txB)
+		hashB := blockB.GenerateHash()
+
+		if hashA == hashB {
+			t.Errorf("Changing transaction Amount did not change block hash. HashA: %s, HashB: %s", hashA, hashB)
+		}
+	})
+}
+
+
+// TestValidateBlock tests the ValidateBlock function.
+func TestValidateBlock(t *testing.T) {
+	t.Helper()
+	// Create a block that is valid by construction
+	validBlock := NewBlock(0, 0, 0, "0", []Transaction{})
+	if validBlock == nil {
+		t.Fatal("NewBlock returned nil, cannot proceed with TestValidateBlock")
+	}
+
+	t.Run("ValidBlock", func(t *testing.T) {
+		t.Helper()
+		if !ValidateBlock(*validBlock) {
+			t.Error("ValidateBlock returned false for a valid block")
+		}
+	})
+
+	t.Run("BlockWithEmptyHash", func(t *testing.T) {
+		t.Helper()
+		blockWithEmptyHash := *validBlock
+		blockWithEmptyHash.Hash = "" // Manually set hash to empty
+		if ValidateBlock(blockWithEmptyHash) {
+			t.Error("ValidateBlock returned true for a block with an empty hash")
+		}
+	})
+
+	t.Run("BlockWithNegativeCoordinates", func(t *testing.T) {
+		t.Helper()
+		coordsToTest := []struct{ X, Y, Z int }{
+			{-1, 0, 0}, {0, -1, 0}, {0, 0, -1}, {-5, -5, -5},
+		}
+		for _, coord := range coordsToTest {
+			blockWithNegativeCoord := *validBlock // Start with a copy of a valid block structure
+			blockWithNegativeCoord.X = coord.X
+			blockWithNegativeCoord.Y = coord.Y
+			blockWithNegativeCoord.Z = coord.Z
+			// The hash is not re-generated here because ValidateBlock checks coordinates *before* hash validity.
+			// If hash was checked first, or if coordinate changes should invalidate the old hash,
+			// then blockWithNegativeCoord.GenerateHash() would be needed.
+			// For the current ValidateBlock, this is fine.
+			testName := fmt.Sprintf("Coords(%d,%d,%d)", coord.X, coord.Y, coord.Z)
+			t.Run(testName, func(t *testing.T) {
+				t.Helper()
+				if ValidateBlock(blockWithNegativeCoord) {
+					t.Errorf("ValidateBlock returned true for a block with negative coordinate(s): X=%d, Y=%d, Z=%d", coord.X, coord.Y, coord.Z)
+				}
+			})
+		}
+	})
+	// Note: The current ValidateBlock doesn't re-calculate and compare hash.
+	// If it did, further tests for hash integrity would be needed here.
+}
+```

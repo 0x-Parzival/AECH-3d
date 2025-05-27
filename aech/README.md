@@ -1,235 +1,208 @@
-# AECH: 3D Blockchain Financial Operating System (Core Implementation)
+# AECH Backend
 
-This repository contains the initial core implementation of AECH, a conceptual 3D blockchain-based financial operating system. This early version focuses on the fundamental structures for creating blocks, storing them in a 3D spatial grid, and initializing a Genesis block.
+AECH is a simplified blockchain and 3D ledger system created for educational purposes.
+It aims to demonstrate basic concepts of blockchain technology, including:
 
-## Current Features
+- Blocks and Transactions
+- Cryptographic Hashing
+- Transaction Pools
+- A 3D "Plane" for spatial block organization (conceptual)
+- Basic Consensus (stubbed)
+- API for interaction
 
-*   **Block3D Structure**: Defines blocks with `X,Y,Z` coordinates, `Timestamp`, `Hash`, `PreviousHash`, and a list of `Transactions`.
-*   **Plane System**: A 3D map (`Cube`) for storing and retrieving `Block3D` objects based on their spatial coordinates.
-*   **Block Operations**:
-    *   `block.NewBlock()`: Creates new blocks, automatically generating a timestamp and hash.
-    *   `block.GenerateHash()`: Computes a SHA256 hash for a block.
-    *   `block.ValidateBlock()`: A basic stub for block validation.
-*   **Plane Operations**:
-    *   `plane.InsertBlock()`: Inserts a block into the 3D `Cube`.
-    *   `plane.GetBlock()`: Retrieves a block from specified coordinates.
-    *   `plane.GetNeighbors()`: Finds adjacent blocks in the 6 cardinal directions.
-*   **Genesis Block**: `main.go` initializes the blockchain with a Genesis block at coordinates (0,0,0).
-*   **Unit Tests**: Basic tests for core `block` and `plane` functionalities are available in the `/test` directory.
+## Run the Server
 
-## Directory Structure
+To start the AECH backend server:
 
-- `/block/`: Contains the `Block3D` structure definition and related functions.
-- `/plane/`: Contains the `Cube` data structure for 3D spatial storage and related functions.
-- `/test/`: Contains unit tests for the project (e.g., `block_plane_test.go`).
-- `main.go`: Entry point of the application; currently initializes the Genesis block.
-- `go.mod`, `go.sum`: Go module files.
-
-## Block Structure Specification (`block.Block3D`)
-
-- `X, Y, Z (int)`: Coordinates of the block in the 3D space.
-- `Timestamp (time.Time)`: Time of block creation.
-- `Hash (string)`: SHA256 hash derived from X,Y,Z, Timestamp, PreviousHash, and concatenated transaction hashes.
-- `PreviousHash (string)`: Hash of a conceptual preceding block. For the Genesis block, this is "0".
-- `Transactions ([]Transaction)`: A list of transactions included in the block.
-    - `Transaction struct { Data []byte }`: Placeholder for actual transaction data. (Note: This is outdated, will be updated in a later step if specified by another subtask, the examples below use the newer Transaction structure.)
-
-## How to Run
-
-1.  **Prerequisites**:
-    *   Go (version 1.21 or later recommended).
-2.  **Clone the repository**:
-    ```bash
-    # git clone <repository-url>
-    # cd aech
-    ```
-3.  **Initialize Go modules** (if you haven't run any `go` commands yet):
-    ```bash
-    go mod tidy
-    ```
-4.  **Run the main application** (initializes Genesis block):
-    ```bash
-    go run main.go
-    ```
-5.  **Run tests**:
-    ```bash
-    go test ./...
-    ```
-
-## Sample Output (`go run main.go`)
-
-The output will be similar to (timestamps will vary):
-
-```log
-2025/05/26 18:47:37 Genesis block created and inserted at coordinates (0, 0, 0)
-2025/05/26 18:47:37 Genesis block Hash: 05676806c90e6b384b9bcaf6aaddbe494a959fdf87390c9e72734965be91ef84
-2025/05/26 18:47:37 Genesis block Timestamp: 2025-05-26 18:47:37.855062506 +0000 UTC m=+0.000084618
+```bash
+go run main.go
 ```
+The server will typically start on port 8080. You'll see log messages in your console indicating the server has started and when requests come in.
 
-## Usage Examples
+## API Reference
 
-### Creating a Transaction
+The API allows you to interact with the AECH system.
 
-Illustrates how to create a new transaction using `block.NewTransaction`. The ID, Timestamp (as UnixNano), and a dummy Signature are automatically generated.
+### Add a Transaction
 
-```go
-package main
+**Endpoint:** `POST /transaction/add`
 
-import (
-	"aech/block"
-	"fmt"
-	"time" // Used for demonstration if you want to see timestamp interpretation
-)
+**Purpose:** Submits a new transaction to the transaction pool.
 
-func main() {
-	tx1 := block.NewTransaction("Alice", "Bob", 10.5)
-	if tx1 != nil {
-		fmt.Printf("Created Transaction:\n")
-		fmt.Printf("  ID: %s\n", tx1.ID)
-		fmt.Printf("  Sender: %s\n", tx1.Sender)
-		fmt.Printf("  Receiver: %s\n", tx1.Receiver)
-		fmt.Printf("  Amount: %.2f\n", tx1.Amount)
-		// Timestamp is int64 (UnixNano)
-		fmt.Printf("  Timestamp (UnixNano): %d\n", tx1.Timestamp)
-		fmt.Printf("  Timestamp (Human-readable): %s\n", time.Unix(0, tx1.Timestamp).Format(time.RFC3339Nano))
-		fmt.Printf("  Signature: %x\n", tx1.Signature) // Print signature as hex
-	}
+**Request Body (JSON):**
+```json
+{
+  "sender": "Alice",
+  "receiver": "Bob",
+  "amount": 10.5
+}
+```
+*   `sender` (string): The identifier of the transaction sender.
+*   `receiver` (string): The identifier of the transaction receiver.
+*   `amount` (float64): The amount to be transferred.
+
+**Response (Success - 200 OK):**
+```json
+{
+  "status": "transaction added",
+  "tx_id": "generated_transaction_id_hash"
 }
 ```
 
-### Using the Transaction Pool (`TxPool`)
+### Add a Block (Simulate Mining)
 
-Demonstrates initializing a `TxPool`, adding transactions, retrieving pending transactions, and removing a transaction by its ID.
+**Endpoint:** `POST /block/add`
 
-```go
-package main
+**Purpose:** Simulates the mining of a new block by taking pending transactions from the pool and adding them to a new block on the plane.
 
-import (
-	"aech/block"
-	"aech/txpool"
-	"fmt"
-)
+**Request Body (JSON):**
+```json
+{
+  "x": 1,
+  "y": 2,
+  "z": 0
+}
+```
+*   `x` (int): The X-coordinate for the new block.
+*   `y` (int): The Y-coordinate for the new block.
+*   `z` (int): The Z-coordinate for the new block.
 
-func main() {
-	tp := txpool.NewTxPool()
-	fmt.Println("Transaction Pool initialized.")
+**Response (Success - 201 Created):**
+A `block.Block3D` object. Example:
+```json
+{
+    "X": 1,
+    "Y": 2,
+    "Z": 0,
+    "Timestamp": "2023-10-27T10:05:00.123456789Z",
+    "Hash": "generated_block_hash",
+    "PreviousHash": "hash_of_block_at_x_y_z-1_or_0",
+    "Transactions": [
+        {
+            "ID": "tx_id_1",
+            "Sender": "SenderName",
+            "Receiver": "ReceiverName",
+            "Amount": 10.0,
+            "Timestamp": 1678886400000000000,
+            "Signature": "7369676e65642d74785f69645f31"
+        }
+    ]
+}
+```
+*Note: `Block3D.Timestamp` is marshaled to RFC3339Nano format. `Transaction.Timestamp` is UnixNano (int64). `Transaction.Signature` is hex-encoded.*
 
-	// Create some transactions
-	txA := block.NewTransaction("Charlie", "David", 50.0)
-	txB := block.NewTransaction("Eve", "Frank", 75.25)
+### Get All Blocks
 
-	// Add transactions to the pool
-	if txA != nil {
-		err := tp.AddTransaction(*txA)
-		if err != nil {
-			fmt.Printf("Error adding txA (%s): %v\n", txA.ID, err)
-		} else {
-			fmt.Printf("Added txA (%s) to pool.\n", txA.ID)
-		}
-	}
-	if txB != nil {
-		err := tp.AddTransaction(*txB)
-		if err != nil {
-			fmt.Printf("Error adding txB (%s): %v\n", txB.ID, err)
-		} else {
-			fmt.Printf("Added txB (%s) to pool.\n", txB.ID)
-		}
-	}
-    
-	// Get pending transactions
-	pendingTxs := tp.GetPendingTransactions(10) // Get up to 10
-	fmt.Printf("Number of pending transactions: %d\n", len(pendingTxs))
-	for i, ptx := range pendingTxs {
-		fmt.Printf("  Pending Tx %d ID: %s\n", i+1, ptx.ID)
-	}
+**Endpoint:** `GET /blocks`
 
-	// Remove a transaction by ID
-	if txA != nil {
-		fmt.Printf("Attempting to remove txA (%s) by ID...\n", txA.ID)
-		err := tp.RemoveTransactionByID(txA.ID)
-		if err != nil {
-			fmt.Printf("Error removing txA by ID: %v\n", err)
-		} else {
-			fmt.Printf("Successfully removed txA by ID.\n")
-		}
-	}
-    
-    // Verify removal
-    pendingAfterRemove := tp.GetPendingTransactions(10)
-    fmt.Printf("Number of pending transactions after removal: %d\n", len(pendingAfterRemove))
-    for i, ptx := range pendingAfterRemove {
-		fmt.Printf("  Remaining Tx %d ID: %s\n", i+1, ptx.ID)
-	}
+**Purpose:** Retrieves a list of all blocks currently in the 3D plane.
+
+**Response (Success - 200 OK):**
+An array of `block.Block3D` objects. Example:
+```json
+[
+  {
+    "X": 0,
+    "Y": 0,
+    "Z": 0,
+    "Timestamp": "2023-10-27T10:00:00Z",
+    "Hash": "abc123genesis",
+    "PreviousHash": "0",
+    "Transactions": []
+  },
+  {
+    "X": 1,
+    "Y": 2,
+    "Z": 0,
+    "Timestamp": "2023-10-27T10:05:00.123456789Z",
+    "Hash": "def456block2",
+    "PreviousHash": "abc123genesis",
+    "Transactions": [
+        {
+            "ID": "tx_id_1",
+            "Sender": "SenderName",
+            "Receiver": "ReceiverName",
+            "Amount": 10.0,
+            "Timestamp": 1678886400000000000,
+            "Signature": "7369676e65642d74785f69645f31"
+        }
+    ]
+  }
+]
+```
+
+### Get Block by ID
+
+**Endpoint:** `GET /block/:id`
+
+**Purpose:** Retrieves details for a specific block by its hash ID.
+
+**URL Parameter:**
+*   `id` (string): The hash of the block to retrieve.
+
+**Response (Success - 200 OK):**
+A single `block.Block3D` object, similar to the one shown in the `POST /block/add` success response.
+
+**Response (Failure - 404 Not Found):**
+Example:
+```json
+{
+    "details": "block with ID your_block_id not found",
+    "error": "block not found"
 }
 ```
 
-### Checking Block Placement with Consensus Logic
+### Get Transaction Pool
 
-Shows a conceptual example of how `Consensus.CanAddBlock` might be used with the `Plane3D` to validate if a block can be added according to spatial rules (e.g., adjacency to existing blocks).
+**Endpoint:** `GET /txpool`
 
-```go
-package main
+**Purpose:** Retrieves all transactions currently pending in the transaction pool.
 
-import (
-	"aech/block"
-	"aech/plane"
-	"aech/consensus"
-	"fmt"
-)
-
-func main() {
-	// 1. Initialize Plane and Consensus
-	p := plane.NewPlane()
-	cs := consensus.NewConsensus(p) 
-	fmt.Println("Plane and Consensus system initialized.")
-
-	// 2. Create a Genesis Block
-	genesisBlock := block.NewBlock(0, 0, 0, "0", nil) 
-
-	// 3. Check if Genesis block can be added and add it
-	fmt.Printf("Attempting to place Genesis Block at (%d,%d,%d)...\n", genesisBlock.X, genesisBlock.Y, genesisBlock.Z)
-	if cs.CanAddBlock(genesisBlock.X, genesisBlock.Y, genesisBlock.Z, genesisBlock) {
-		err := p.AddBlock(genesisBlock.X, genesisBlock.Y, genesisBlock.Z, genesisBlock)
-		if err != nil {
-			fmt.Printf("Error adding Genesis block to plane: %v\n", err)
-		} else {
-			fmt.Printf("Genesis block (Hash: %s) added to the plane.\n", genesisBlock.Hash)
-		}
-	} else {
-		fmt.Println("Consensus rules prevent adding Genesis block where specified.")
-	}
-
-	// 4. Create a subsequent block, adjacent to Genesis
-	if _, err := p.GetBlock(0,0,0); err == nil { // Check if Genesis was actually added
-        nextBlock := block.NewBlock(0, 0, 1, genesisBlock.Hash, nil) 
-        fmt.Printf("Attempting to place Next Block at (%d,%d,%d), adjacent to Genesis...\n", nextBlock.X, nextBlock.Y, nextBlock.Z)
-        if cs.CanAddBlock(nextBlock.X, nextBlock.Y, nextBlock.Z, nextBlock) {
-             err := p.AddBlock(nextBlock.X, nextBlock.Y, nextBlock.Z, nextBlock)
-             if err != nil {
-                fmt.Printf("Error adding next block to plane: %v\n", err)
-             } else {
-                fmt.Printf("Next block (Hash: %s) added to the plane at (%d,%d,%d).\n", nextBlock.Hash, nextBlock.X, nextBlock.Y, nextBlock.Z)
-             }
-        } else {
-            fmt.Printf("Consensus rules prevent adding next block at (%d,%d,%d).\n", nextBlock.X, nextBlock.Y, nextBlock.Z)
-        }
-
-        // 5. Create an isolated block (should fail consensus)
-        isolatedBlock := block.NewBlock(5,5,5, genesisBlock.Hash, nil)
-        fmt.Printf("Attempting to place Isolated Block at (%d,%d,%d)...\n", isolatedBlock.X, isolatedBlock.Y, isolatedBlock.Z)
-        if cs.CanAddBlock(isolatedBlock.X, isolatedBlock.Y, isolatedBlock.Z, isolatedBlock) {
-            fmt.Println("Consensus rules unexpectedly allowed isolated block!")
-            // Try to add it to see plane's behavior (though consensus should prevent)
-            _ = p.AddBlock(isolatedBlock.X, isolatedBlock.Y, isolatedBlock.Z, isolatedBlock)
-        } else {
-             fmt.Printf("Consensus rules correctly prevented adding isolated block at (%d,%d,%d).\n", isolatedBlock.X, isolatedBlock.Y, isolatedBlock.Z)
-        }
-    } else {
-        fmt.Println("Genesis block not found in plane, skipping subsequent block tests.")
+**Response (Success - 200 OK):**
+An array of `block.Transaction` objects. Example:
+```json
+[
+    {
+        "ID": "tx_id_pending_1",
+        "Sender": "SenderPending",
+        "Receiver": "ReceiverPending",
+        "Amount": 5.0,
+        "Timestamp": 1678886500000000000,
+        "Signature": "7369676e65642d74785f69645f70656e64696e675f31"
     }
-}
+]
 ```
+*Note: `Transaction.Timestamp` is UnixNano (int64). `Transaction.Signature` is hex-encoded.*
 
-## Architecture Diagram
+### Get Plane Grid Layout
 
-*(Placeholder: A visual diagram, possibly using ASCII art or a linked image (e.g., from draw.io), will be added here in future iterations to better illustrate the 3D cube structure and block relationships.)*
+**Endpoint:** `GET /plane/grid`
+
+**Purpose:** Returns the current layout of the 3D plane by listing all blocks. This is effectively the same as `GET /blocks`.
+
+**Response (Success - 200 OK):**
+An array of `block.Block3D` objects, same as `GET /blocks`.
+
+## Modules
+
+The AECH system is organized into the following packages:
+
+- `block`: Defines `Block3D` and `Transaction` structures, and core operations like hashing and signing.
+- `txpool`: Manages the pool of pending transactions before they are included in blocks.
+- `plane`: Manages the 3D grid representation where blocks are spatially organized.
+- `api`: Provides the HTTP API interface using the Gin framework.
+- `main.go`: The entry point for the application. It initializes all components (transaction pool, plane) and starts the API server.
+
+Other conceptual modules (currently stubbed or not fully implemented):
+- `consensus`: Intended for consensus algorithm integration.
+- `wallet`: Intended for user wallet functionalities.
+- `ai`: Conceptual module for AI-driven interactions or analysis.
+- `bridge`: Conceptual module for cross-chain communication.
+- `crosschain`: Support for cross-chain interactions.
+- `explorer`: For a potential block explorer interface.
+- `frontend`: For a potential user interface.
+
+## Disclaimer
+
+This project is for learning and demonstration. It is not intended for production use and lacks many security features and optimizations found in real-world blockchain systems.
+```

@@ -43,14 +43,30 @@ func TestTxPool_GetPendingTransactions(t *testing.T) {
 		block.NewTransaction("s2", "r2", 20),
 		block.NewTransaction("s3", "r3", 30),
 	}
+
+	// Test with empty pool
+	if len(tp.GetPendingTransactions(0)) != 0 {
+		t.Errorf("Expected GetPendingTransactions(0) to return 0 transactions for an empty pool, got %d", len(tp.GetPendingTransactions(0)))
+	}
+	if len(tp.GetPendingTransactions(-1)) != 0 {
+		t.Error("Expected GetPendingTransactions(-1) to return 0 transactions for an empty pool")
+	}
+
+	// Add transactions to the pool
 	for _, tx := range txs {
 		if err := tp.AddTransaction(*tx); err != nil {
 			t.Fatalf("Error adding tx %s during setup: %v", tx.ID, err)
 		}
 	}
 
-	if len(tp.GetPendingTransactions(0)) != 0 {t.Error("GetPending(0) should be 0")}
-    if len(tp.GetPendingTransactions(-1)) != 0 {t.Error("GetPending(-1) should be 0")}
+	// Test GetPendingTransactions(0) for all transactions
+	allTxs := tp.GetPendingTransactions(0)
+	if len(allTxs) != len(txs) {
+		t.Errorf("Expected GetPendingTransactions(0) to return all %d transactions, but got %d", len(txs), len(allTxs))
+	}
+
+	// Test GetPendingTransactions(-1) still returns empty slice
+    if len(tp.GetPendingTransactions(-1)) != 0 {t.Error("GetPendingTransactions(-1) should return 0 transactions even when pool is not empty")}
 	
     got2 := tp.GetPendingTransactions(2)
 	if len(got2) != 2 {

@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+const (
+	// GenesisPrevHash is a standard string to indicate the previous hash for a Genesis block.
+	GenesisPrevHash = "GENESIS"
+	// ZeroHash represents a commonly used hash value consisting of all zeros, often for the first block.
+	ZeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
+)
+
 // Transaction represents a single transaction in the AECH system.
 // It includes details about the sender, receiver, amount, and a signature.
 type Transaction struct {

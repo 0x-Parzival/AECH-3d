@@ -67,7 +67,7 @@ func (cs *Consensus) CanAddBlock(x, y, z int, newBlock *block.Block3D) bool {
 	// Check if the plane is effectively empty by trying to get a block at 0,0,0.
 	// This is a proxy for "is this the very first block?"
 	_, err := cs.plane.GetBlock(0, 0, 0)
-	// isGenesisScenario is true if we are trying to place at (0,0,0) AND (0,0,0) is currently empty.
+	// isGenesisScenario is true if attempting to place at (0,0,0) AND cs.plane.GetBlock(0,0,0) returned an error (e.g., block not found), indicating (0,0,0) is empty.
 	isGenesisScenario := (x == 0 && y == 0 && z == 0 && err != nil)
 
 	if isGenesisScenario {

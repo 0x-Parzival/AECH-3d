@@ -45,26 +45,42 @@ func (tp *TxPool) AddTransaction(tx block.Transaction) error {
 
 // GetPendingTransactions retrieves a specified number of transactions from the pool.
 // It takes an integer `count` specifying the maximum number of transactions to retrieve.
-// If `count` is zero or negative, or if the pool is empty, an empty slice is returned.
-// If `count` is greater than the number of transactions in the pool, all pending transactions are returned.
+// It takes an integer `count` specifying the maximum number of transactions to retrieve.
+// If `count == 0`, all pending transactions are retrieved.
+// If `count < 0`, an empty slice is returned.
+// If `count > 0` and `count > len(tp.pending)`, all pending transactions are retrieved.
+// Otherwise, `count` transactions are retrieved.
+// If the pool is empty, an empty slice is always returned regardless of `count` (unless `count < 0`).
 // The order of transactions returned is non-deterministic due to the nature of map iteration.
 func (tp *TxPool) GetPendingTransactions(count int) []block.Transaction {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 
-	if count <= 0 || len(tp.pending) == 0 {
+	if len(tp.pending) == 0 { // If pool is empty, always return empty
 		return []block.Transaction{}
 	}
 
-	// Ensure we don't try to retrieve more transactions than available
-	if count > len(tp.pending) {
-		count = len(tp.pending)
+	if count < 0 { // If count is negative, return empty
+		return []block.Transaction{}
 	}
 
-	transactions := make([]block.Transaction, 0, count)
+	var limit int
+	if count == 0 { // count == 0 means get all
+		limit = len(tp.pending)
+	} else { // count > 0
+		if count > len(tp.pending) {
+			limit = len(tp.pending) // Cannot get more than available
+		} else {
+			limit = count // Get requested count
+		}
+	}
+	
+	// If limit is 0 at this point (e.g. count was 0 and pool was empty, though pool empty is handled above)
+	// the make call will be make([]block.Transaction, 0, 0) and the loop won't run, returning an empty slice.
+	transactions := make([]block.Transaction, 0, limit)
 	i := 0
 	for _, tx := range tp.pending { // Iteration order over map is not guaranteed
-		if i >= count {
+		if i >= limit {
 			break
 		}
 		transactions = append(transactions, tx)

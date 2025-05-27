@@ -36,8 +36,8 @@ func main() {
 		}
 	}
 	fmt.Printf("%d Initial Transactions added to TxPool.\n", len(initialTxs))
-	// Using a large number to effectively get all pending transactions for display purposes
-	fmt.Println("Current TxPool size:", len(tp.GetPendingTransactions(100))) 
+	// Using 0 to get all pending transactions for display purposes
+	fmt.Println("Current TxPool size:", len(tp.GetPendingTransactions(0))) 
 	fmt.Println("---")
 
 	// 3. Create Genesis Block (0,0,0)
@@ -45,7 +45,7 @@ func main() {
 	if len(pendingTxsForGenesis) < 2 { // As per instruction, expecting 2 for genesis
 		log.Fatalf("Not enough transactions in TxPool for Genesis block. Found: %d, Expected: 2", len(pendingTxsForGenesis))
 	}
-	genesisBlock := block.NewBlock(0, 0, 0, "GENESIS", pendingTxsForGenesis)
+	genesisBlock := block.NewBlock(0, 0, 0, block.GenesisPrevHash, pendingTxsForGenesis)
 
 	canAddGenesis := cs.CanAddBlock(0, 0, 0, genesisBlock)
 	if !canAddGenesis {
@@ -68,7 +68,7 @@ func main() {
 	fmt.Println("Genesis Block added at (0,0,0)")
 	fmt.Println("Hash:", genesisBlock.Hash)
 	fmt.Println("Transactions included:", len(genesisBlock.Transactions))
-	fmt.Println("Remaining Pending Transactions in Pool:", len(tp.GetPendingTransactions(100)))
+	fmt.Println("Remaining Pending Transactions in Pool:", len(tp.GetPendingTransactions(0)))
 	fmt.Println("---")
 
 	// 4. Create Second Block (e.g., 1,0,0)
@@ -85,7 +85,7 @@ func main() {
 	fmt.Printf("%d New Transactions added to TxPool for Block 2.\n", len(newTxsForBlock2))
 	
 	block2Txs := tp.GetPendingTransactions(2) // Attempt to get 2 txs
-	if len(block2Txs) == 0 && len(tp.GetPendingTransactions(100)) > 0 { // Check if pool is not empty but we got 0
+	if len(block2Txs) == 0 && len(tp.GetPendingTransactions(0)) > 0 { // Check if pool is not empty but we got 0
 		log.Fatalf("TxPool is not empty, but no transactions were fetched for Block 2.")
 	}
 	fmt.Printf("Fetched %d transactions for Block 2.\n", len(block2Txs))
@@ -118,7 +118,7 @@ func main() {
 	fmt.Println("Hash:", block2.Hash)
 	fmt.Println("Previous Hash:", block2.PreviousHash)
 	fmt.Println("Transactions included:", len(block2.Transactions))
-	fmt.Println("Remaining Pending Transactions in Pool:", len(tp.GetPendingTransactions(100)))
+	fmt.Println("Remaining Pending Transactions in Pool:", len(tp.GetPendingTransactions(0)))
 	fmt.Println("---")
 
 	// 5. Create Third Block (e.g., 0,1,0)
@@ -135,7 +135,7 @@ func main() {
 	fmt.Printf("%d New Transactions added to TxPool for Block 3.\n", len(newTxsForBlock3))
 
 	block3Txs := tp.GetPendingTransactions(2) // Attempt to get 2 txs
-	if len(block3Txs) == 0 && len(tp.GetPendingTransactions(100)) > 0 {
+	if len(block3Txs) == 0 && len(tp.GetPendingTransactions(0)) > 0 {
 		log.Fatalf("TxPool is not empty, but no transactions were fetched for Block 3.")
 	}
 	fmt.Printf("Fetched %d transactions for Block 3.\n", len(block3Txs))
@@ -168,7 +168,7 @@ func main() {
 	fmt.Println("Hash:", block3.Hash)
 	fmt.Println("Previous Hash:", block3.PreviousHash)
 	fmt.Println("Transactions included:", len(block3.Transactions))
-	fmt.Println("Remaining Pending Transactions in Pool:", len(tp.GetPendingTransactions(100)))
+	fmt.Println("Remaining Pending Transactions in Pool:", len(tp.GetPendingTransactions(0)))
 	fmt.Println("---")
 
 	// 6. Final Output - Print Plane Structure

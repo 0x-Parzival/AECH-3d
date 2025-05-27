@@ -86,7 +86,7 @@ func main() {
 
 		// Add Genesis block
 		genesisTxs := []block.Transaction{} // Genesis might have no app-level txs or specific coinbase
-		genesisBlock := block.NewBlock(0, 0, 0, "0000000000000000000000000000000000000000000000000000000000000000", genesisTxs) // Using full length zero hash for clarity
+		genesisBlock := block.NewBlock(0, 0, 0, block.ZeroHash, genesisTxs) // Using constant for zero hash
 		if genesisBlock == nil {
 			log.Fatal("Failed to create Genesis block for print-plane.")
 		}

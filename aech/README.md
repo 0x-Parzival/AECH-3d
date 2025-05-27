@@ -17,6 +17,20 @@ This repository contains the initial core implementation of AECH, a conceptual 3
 *   **Genesis Block**: `main.go` initializes the blockchain with a Genesis block at coordinates (0,0,0).
 *   **Unit Tests**: Basic tests for core `block` and `plane` functionalities are available in the `/test` directory.
 
+## Transaction to Block Flow
+
+The lifecycle of a transaction from creation to inclusion in a block on the 3D plane is as follows:
+
+1.  **Transaction Creation**: Transactions are initiated using `block.NewTransaction(sender, receiver, amount)`. This function populates the transaction details and generates a unique ID.
+2.  **Addition to Transaction Pool**: New transactions are added to a temporary holding area called the `TxPool` using `txpool.AddTransaction(transaction)`. The `TxPool` manages pending transactions.
+3.  **Transaction Retrieval for Block Creation**: When a new block is ready to be proposed, a set of pending transactions is retrieved from the `TxPool` using `txpool.GetPendingTransactions(count)`.
+4.  **Block Creation**: A new block is created using `block.NewBlock(x, y, z, previousHash, transactions)`, incorporating the retrieved transactions. The block's own hash is computed.
+5.  **Consensus Validation**: The newly created block, along with its target coordinates, is validated against the network's consensus rules using `consensus.CanAddBlock(x, y, z, block)`. This checks, for example, if the block can be placed at the specified 3D coordinates (e.g., it must be adjacent to an existing block, unless it's the Genesis block).
+6.  **Addition to Plane**: If consensus validation passes, the block is added to the `Plane3D` (the 3D grid of blocks) using `plane.AddBlock(x, y, z, block)`.
+7.  **Transaction Removal from Pool**: After a block is successfully added to the plane, the transactions it contains are removed from the `TxPool` using `txpool.RemoveTransactionByID(txID)` for each transaction.
+
+This flow ensures that transactions are validated, batched into blocks, and that blocks are added to the blockchain in a consistent and orderly manner accordings to the defined consensus rules.
+
 ## Directory Structure
 
 - `/block/`: Contains the `Block3D` structure definition and related functions.
@@ -54,6 +68,16 @@ This repository contains the initial core implementation of AECH, a conceptual 3
 5.  **Run tests**:
     ```bash
     go test ./...
+    ```
+6.  **Run the simulation script**:
+    The end-to-end simulation script demonstrates the creation of transactions, their inclusion in blocks, block validation, and addition to the 3D plane.
+    ```bash
+    cd /app/aech # Assuming you are in the /app directory, navigate to aech module root
+    go run ./test/test.go
+    ```
+    Or, if your current directory is already `/app/aech`:
+    ```bash
+    go run ./test/test.go
     ```
 
 ## Sample Output (`go run main.go`)

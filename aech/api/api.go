@@ -5,10 +5,20 @@ import (
 	"aech/plane"
 	"aech/txpool"
 	"github.com/gin-gonic/gin"
+	"encoding/hex" // Added for ID calculation
+	"fmt"          // Added for error formatting
 	"log"
+	"math"    // Added for pagination (math.Ceil)
 	"net/http"
 	"regexp"  // Added for name validation
+	"strconv" // Added for pagination (Atoi)
 	"strings" // Added for Content-Type check
+)
+
+const (
+	DefaultPage  = 1
+	DefaultLimit = 10
+	MaxLimit     = 100
 )
 
 // APIServer holds instances needed by the API handlers.
@@ -68,12 +78,73 @@ func RunServer(port string, p *plane.Plane3D, tp *txpool.TxPool) {
 }
 
 // getBlocksHandler handles GET requests to /blocks.
-// It retrieves all blocks from the plane and returns them as JSON.
+// It retrieves all blocks from the plane and returns them as a paginated JSON response.
 func (s *APIServer) getBlocksHandler(c *gin.Context) {
-	log.Printf("Incoming %s %s request", c.Request.Method, c.Request.URL.Path)
-	blocks := s.plane.GetAllBlocks()
-	// Currently, GetAllBlocks doesn't return an error. If it did, we'd check it here.
-	c.JSON(http.StatusOK, blocks)
+	log.Printf("Incoming %s %s request (with query: %s)", c.Request.Method, c.Request.URL.Path, c.Request.URL.RawQuery)
+
+	// Parse page query parameter
+	pageStr := c.DefaultQuery("page", strconv.Itoa(DefaultPage))
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		log.Printf("Invalid page parameter '%s', defaulting to %d. Error: %v", pageStr, DefaultPage, err)
+		page = DefaultPage
+	}
+
+	// Parse limit query parameter
+	limitStr := c.DefaultQuery("limit", strconv.Itoa(DefaultLimit))
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		log.Printf("Invalid limit parameter '%s', defaulting to %d. Error: %v", limitStr, DefaultLimit, err)
+		limit = DefaultLimit
+	}
+	if limit > MaxLimit {
+		log.Printf("Limit parameter %d exceeds MaxLimit %d, capping at MaxLimit.", limit, MaxLimit)
+		limit = MaxLimit
+	}
+
+	allBlocks := s.plane.GetAllBlocks()
+	total := len(allBlocks)
+
+	// Calculate start and end for slicing
+	start := (page - 1) * limit
+	end := start + limit
+
+	// Adjust start and end if they are out of bounds
+	if start > total {
+		start = total // This will result in an empty slice if start was already beyond total
+	}
+	if end > total {
+		end = total
+	}
+        
+    var paginatedBlocks []*block.Block3D
+    if start >= total { // If start index is beyond or at the end of the slice
+        paginatedBlocks = []*block.Block3D{} // Return empty slice
+    } else {
+        paginatedBlocks = allBlocks[start:end]
+    }
+
+
+	totalPages := 0
+	if total > 0 && limit > 0 { // Avoid division by zero if no items or limit is zero (though limit is validated >0)
+		totalPages = int(math.Ceil(float64(total) / float64(limit)))
+	}
+    if total == 0 { // Ensure totalPages is 0 if total is 0, even if page is 1
+        totalPages = 0
+    }
+    if totalPages == 0 && total > 0 { // If total > 0 but totalPages calculated to 0 (e.g. total < limit), it should be 1
+        totalPages = 1
+    }
+
+
+	response := gin.H{
+		"page":       page,
+		"limit":      limit,
+		"total":      total,
+		"totalPages": totalPages,
+		"data":       paginatedBlocks,
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // getBlockByIDHandler handles GET requests to /block/:id.
@@ -99,115 +170,152 @@ func (s *APIServer) getBlockByIDHandler(c *gin.Context) {
 // It adds a new transaction to the transaction pool.
 func (s *APIServer) addTransactionHandler(c *gin.Context) {
 	log.Printf("Incoming %s %s request", c.Request.Method, c.Request.URL.Path)
-	var tx block.Transaction // This var is not directly used due to revised logic below.
-	// Binding to a temporary struct to extract only necessary fields for NewTransaction
-	clientTxData := struct {
-		Sender   string  `json:"sender"`
-		Receiver string  `json:"receiver"`
-		Amount   float64 `json:"amount"`
-	}{}
-	if err := c.BindJSON(&clientTxData); err != nil {
+
+	var receivedTx block.Transaction
+	if err := c.BindJSON(&receivedTx); err != nil {
 		log.Printf("Error binding JSON for addTransaction: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid transaction format", "details": err.Error()})
 		return
 	}
 
-	// Input Validation for addTransactionHandler
+	// Basic Input Validation
 	const maxNameLength = 256 // Define a reasonable max length
-	if len(clientTxData.Sender) > maxNameLength {
-		log.Printf("AddTransaction failed: sender name too long (max %d chars). Length: %d", maxNameLength, len(clientTxData.Sender))
+	if len(receivedTx.Sender) > maxNameLength {
+		log.Printf("AddTransaction failed: sender name too long (max %d chars). Length: %d", maxNameLength, len(receivedTx.Sender))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "sender name too long", "max_length": maxNameLength})
 		return
 	}
-	if len(clientTxData.Receiver) > maxNameLength {
-		log.Printf("AddTransaction failed: receiver name too long (max %d chars). Length: %d", maxNameLength, len(clientTxData.Receiver))
+	if len(receivedTx.Receiver) > maxNameLength {
+		log.Printf("AddTransaction failed: receiver name too long (max %d chars). Length: %d", maxNameLength, len(receivedTx.Receiver))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver name too long", "max_length": maxNameLength})
 		return
 	}
-	if clientTxData.Amount <= 0 {
-		log.Printf("AddTransaction failed: amount must be positive. Amount: %f", clientTxData.Amount)
+	if receivedTx.Amount <= 0 {
+		log.Printf("AddTransaction failed: amount must be positive. Amount: %f", receivedTx.Amount)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be positive"})
 		return
 	}
-	// The check for empty sender/receiver is already there, which is good.
+	if receivedTx.Sender == "" || receivedTx.Receiver == "" {
+		log.Printf("AddTransaction failed: sender or receiver is empty. Sender: '%s', Receiver: '%s'", receivedTx.Sender, receivedTx.Receiver)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "sender and receiver cannot be empty"})
+		return
+	}
 
-	// Define and use regex for name validation
 	var validNamePattern = regexp.MustCompile("^[a-zA-Z0-9_-]+$")
-
-	if !validNamePattern.MatchString(clientTxData.Sender) {
-		log.Printf("AddTransaction failed: sender name contains invalid characters. Sender: '%s'", clientTxData.Sender)
+	if !validNamePattern.MatchString(receivedTx.Sender) {
+		log.Printf("AddTransaction failed: sender name contains invalid characters. Sender: '%s'", receivedTx.Sender)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "sender name contains invalid characters", "details": "Sender must be alphanumeric and can include _ or -."})
 		return
 	}
-	if !validNamePattern.MatchString(clientTxData.Receiver) {
-		log.Printf("AddTransaction failed: receiver name contains invalid characters. Receiver: '%s'", clientTxData.Receiver)
+	if !validNamePattern.MatchString(receivedTx.Receiver) {
+		log.Printf("AddTransaction failed: receiver name contains invalid characters. Receiver: '%s'", receivedTx.Receiver)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver name contains invalid characters", "details": "Receiver must be alphanumeric and can include _ or -."})
 		return
 	}
 
-	// Sign the transaction (as per current dummy signing logic)
-	// NewTransaction already calls Sign, but if we receive a raw tx, we should sign it.
-	// If tx.ID is empty, it implies it's a new transaction not yet processed by NewTransaction.
-	// However, NewTransaction is the one that generates ID and signs.
-	// For robustness, let's ensure it's signed. The client *should* send all necessary fields
-	// for NewTransaction to work if they construct it, or send a pre-created one.
-	// If the transaction is supposed to be created here from raw data,
-	// we might need to call block.NewTransaction(tx.Sender, tx.Receiver, tx.Amount)
-	// and then it would be signed.
-	// For now, assuming the client sends a transaction that might just need its signature (re-)applied.
-	// The current NewTransaction sets ID and Signature. If a client sends a TX,
-	// it should have an ID.
-    // If the client is expected to send minimal data (sender, receiver, amount) and the server
-    // completes it, the logic would be different:
-    // newTx := block.NewTransaction(tx.Sender, tx.Receiver, tx.Amount) // This creates ID, Timestamp, signs.
-    // Then use newTx for AddTransaction.
-    //
-    // Given the current structure of Transaction and NewTransaction,
-    // if a client sends a JSON that unmarshals into block.Transaction,
-    // its ID and Signature might be empty or incorrect.
-    // Let's assume the client provides Sender, Receiver, Amount.
-    // We should probably re-construct it to ensure ID and Signature are correctly generated.
-
-    // Correct approach: Treat incoming JSON as data for a *new* transaction
-    // unless the API is designed to accept pre-signed, pre-ID'd transactions.
-    // The task says "Call tx.Sign()", implying tx is already somewhat formed.
-    // Let's stick to that and assume ID is part of the incoming tx for now,
-    // and Sign() just populates/overwrites the signature.
-
-	if clientTxData.Sender == "" || clientTxData.Receiver == "" { // Basic validation
-		log.Printf("AddTransaction failed: sender or receiver is empty. Sender: '%s', Receiver: '%s'", clientTxData.Sender, clientTxData.Receiver)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "sender and receiver cannot be empty"})
+	// Perform Signature Verification
+	if err := block.VerifySignature(receivedTx); err != nil {
+		log.Printf("Transaction signature verification failed for Tx ID %s (or provisional ID): %v", receivedTx.ID, err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid transaction signature", "details": err.Error()})
 		return
 	}
-    // The ID and Timestamp are set by NewTransaction. If we just BindJSON and Sign,
-    // ID and Timestamp might not be what we expect if the client doesn't send them.
-    // A safer way for "adding" a new transaction from client data:
-    // clientTxData struct is already defined and bound above.
+	log.Printf("Transaction signature verified successfully for Tx ID %s", receivedTx.ID)
 
-    // Create a new transaction using the system's logic to ensure ID, Timestamp, and Signature are correct
-    finalTx := block.NewTransaction(clientTxData.Sender, clientTxData.Receiver, clientTxData.Amount)
-    // NewTransaction already calls Sign(), so an explicit finalTx.Sign() is redundant here.
+	// Recalculate and Verify/Set Transaction ID
+	expectedIDBytes := block.HashTransactionContent(receivedTx)
+	expectedID := hex.EncodeToString(expectedIDBytes[:])
 
+	if receivedTx.ID != expectedID {
+		log.Printf("Transaction ID mismatch for received Tx. Client ID: %s, Server-calculated ID: %s. Content was verified against client signature, but ID does not match content hash.", receivedTx.ID, expectedID)
+		if receivedTx.ID != "" { // Client provided an ID and it's wrong
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Transaction ID mismatch", "details": fmt.Sprintf("Provided ID '%s' does not match calculated content hash ID '%s'", receivedTx.ID, expectedID)})
+			return
+		}
+		// If client ID was empty, or we choose to always use server-calculated ID (current policy is to set if empty):
+		log.Printf("Setting transaction ID to server-calculated hash: %s (Client ID was: '%s')", expectedID, receivedTx.ID)
+		receivedTx.ID = expectedID
+	} else {
+		log.Printf("Transaction ID %s matches calculated content hash.", receivedTx.ID)
+	}
 
-	if err := s.txpool.AddTransaction(*finalTx); err != nil {
-		log.Printf("Failed to add transaction %s to pool: %v", finalTx.ID, err)
-		// Determine appropriate status code based on error type if TxPool returns specific errors
-		// For now, using 400 for any error from AddTransaction.
-		// Could be 409 if it's a duplicate, 422 for validation, etc.
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to add transaction", "details": err.Error()})
+	// Add to Transaction Pool
+	if err := s.txpool.AddTransaction(receivedTx); err != nil { // Pass receivedTx directly
+		log.Printf("Failed to add transaction %s to pool: %v", receivedTx.ID, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to add transaction to pool", "details": err.Error()})
 		return
 	}
-	log.Printf("Transaction %s added to pool via API", finalTx.ID) // Specific log for successful add
-	c.JSON(http.StatusOK, gin.H{"status": "transaction added", "tx_id": finalTx.ID})
+
+	// Success Response
+	log.Printf("Transaction %s accepted and added to pool", receivedTx.ID)
+	c.JSON(http.StatusCreated, gin.H{"status": "Transaction accepted", "id": receivedTx.ID}) // Use StatusCreated
 }
 
 // getTxPoolHandler handles GET requests to /txpool.
-// It retrieves all pending transactions from the transaction pool.
+// It retrieves all pending transactions from the transaction pool as a paginated JSON response.
 func (s *APIServer) getTxPoolHandler(c *gin.Context) {
-	log.Printf("Incoming %s %s request", c.Request.Method, c.Request.URL.Path)
-	transactions := s.txpool.GetAllTransactions()
-	// Currently, GetAllTransactions doesn't return an error.
-	c.JSON(http.StatusOK, transactions)
+	log.Printf("Incoming %s %s request (with query: %s)", c.Request.Method, c.Request.URL.Path, c.Request.URL.RawQuery)
+
+	// Parse page query parameter
+	pageStr := c.DefaultQuery("page", strconv.Itoa(DefaultPage))
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		log.Printf("Invalid page parameter '%s' for txpool, defaulting to %d. Error: %v", pageStr, DefaultPage, err)
+		page = DefaultPage
+	}
+
+	// Parse limit query parameter
+	limitStr := c.DefaultQuery("limit", strconv.Itoa(DefaultLimit))
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		log.Printf("Invalid limit parameter '%s' for txpool, defaulting to %d. Error: %v", limitStr, DefaultLimit, err)
+		limit = DefaultLimit
+	}
+	if limit > MaxLimit {
+		log.Printf("Limit parameter %d for txpool exceeds MaxLimit %d, capping at MaxLimit.", limit, MaxLimit)
+		limit = MaxLimit
+	}
+
+	allTransactions := s.txpool.GetAllTransactions() // Uses GetAllTransactions
+	total := len(allTransactions)
+
+	// Calculate start and end for slicing
+	start := (page - 1) * limit
+	end := start + limit
+
+	// Adjust start and end if they are out of bounds
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+    
+    var paginatedTransactions []block.Transaction
+    if start >= total {
+        paginatedTransactions = []block.Transaction{} // Return empty slice
+    } else {
+        paginatedTransactions = allTransactions[start:end]
+    }
+
+	totalPages := 0
+	if total > 0 && limit > 0 {
+		totalPages = int(math.Ceil(float64(total) / float64(limit)))
+	}
+    if total == 0 {
+        totalPages = 0
+    }
+    if totalPages == 0 && total > 0 {
+        totalPages = 1
+    }
+
+	response := gin.H{
+		"page":       page,
+		"limit":      limit,
+		"total":      total,
+		"totalPages": totalPages,
+		"data":       paginatedTransactions,
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // TODO: Implement addBlockHandler if direct block addition via API is desired.

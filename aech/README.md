@@ -120,40 +120,42 @@ A `block.Block3D` object. Example:
 
 **Endpoint:** `GET /blocks`
 
-**Purpose:** Retrieves a list of all blocks currently in the 3D plane.
+**Purpose:** Retrieves a list of all blocks currently in the 3D plane. Supports pagination.
+
+**Query Parameters (Optional):**
+*   `page` (int): The page number to retrieve. Defaults to `1`.
+*   `limit` (int): The number of blocks per page. Defaults to `10`, Max `100`.
 
 **Response (Success - 200 OK):**
-An array of `block.Block3D` objects. Example:
+A paginated list of `block.Block3D` objects.
 ```json
-[
-  {
-    "X": 0,
-    "Y": 0,
-    "Z": 0,
-    "Timestamp": "2023-10-27T10:00:00Z",
-    "Hash": "abc123genesis",
-    "PreviousHash": "0",
-    "Transactions": []
-  },
-  {
-    "X": 1,
-    "Y": 2,
-    "Z": 0,
-    "Timestamp": "2023-10-27T10:05:00.123456789Z",
-    "Hash": "def456block2",
-    "PreviousHash": "abc123genesis",
-    "Transactions": [
-        {
-            "ID": "tx_id_1",
-            "Sender": "SenderName",
-            "Receiver": "ReceiverName",
-            "Amount": 10.0,
-            "Timestamp": 1678886400000000000,
-            "Signature": "7369676e65642d74785f69645f31"
-        }
-    ]
-  }
-]
+{
+  "page": 1,
+  "limit": 10,
+  "total": 100, // Total number of blocks in the plane
+  "totalPages": 10, // Total number of pages
+  "data": [
+    {
+      "X": 0,
+      "Y": 0,
+      "Z": 0,
+      "Timestamp": "2023-10-27T10:00:00Z",
+      "Hash": "abc123genesis",
+      "PreviousHash": "0",
+      "Transactions": []
+    }
+    // ... other blocks for the current page ...
+  ]
+}
+```
+
+**Example `curl` commands:**
+```bash
+# Get first page, default limit (10)
+curl "http://localhost:8080/blocks"
+
+# Get page 2 with a limit of 5 blocks
+curl "http://localhost:8080/blocks?page=2&limit=5"
 ```
 
 ### Get Block by ID
@@ -181,32 +183,57 @@ Example:
 
 **Endpoint:** `GET /txpool`
 
-**Purpose:** Retrieves all transactions currently pending in the transaction pool.
+**Purpose:** Retrieves all transactions currently pending in the transaction pool. Supports pagination.
+
+**Query Parameters (Optional):**
+*   `page` (int): The page number to retrieve. Defaults to `1`.
+*   `limit` (int): The number of transactions per page. Defaults to `10`, Max `100`.
 
 **Response (Success - 200 OK):**
-An array of `block.Transaction` objects. Example:
+A paginated list of `block.Transaction` objects.
 ```json
-[
+{
+  "page": 1,
+  "limit": 10,
+  "total": 50, // Total number of transactions in the pool
+  "totalPages": 5, // Total number of pages
+  "data": [
     {
         "ID": "tx_id_pending_1",
         "Sender": "SenderPending",
         "Receiver": "ReceiverPending",
         "Amount": 5.0,
         "Timestamp": 1678886500000000000,
-        "Signature": "7369676e65642d74785f69645f70656e64696e675f31"
+        "Signature": "7369676e65642d74785f69645f70656e64696e675f31",
+        "PubKey": "hex_encoded_compressed_pubkey_here"
     }
-]
+    // ... other transactions for the current page ...
+  ]
+}
 ```
-*Note: `Transaction.Timestamp` is UnixNano (int64). `Transaction.Signature` is hex-encoded.*
+*Note: `Transaction.Timestamp` is UnixNano (int64). `Transaction.Signature` and `Transaction.PubKey` are hex-encoded.*
+
+**Example `curl` commands:**
+```bash
+# Get first page, default limit (10)
+curl "http://localhost:8080/txpool"
+
+# Get page 1 with a limit of 20 transactions
+curl "http://localhost:8080/txpool?page=1&limit=20"
+```
 
 ### Get Plane Grid Layout
 
 **Endpoint:** `GET /plane/grid`
 
-**Purpose:** Returns the current layout of the 3D plane by listing all blocks. This is effectively the same as `GET /blocks`.
+**Purpose:** Returns the current layout of the 3D plane by listing all blocks. This is effectively the same as `GET /blocks` and supports the same pagination.
+
+**Query Parameters (Optional):**
+*   `page` (int): The page number to retrieve. Defaults to `1`.
+*   `limit` (int): The number of blocks per page. Defaults to `10`, Max `100`.
 
 **Response (Success - 200 OK):**
-An array of `block.Block3D` objects, same as `GET /blocks`.
+A paginated list of `block.Block3D` objects, same structure as `GET /blocks`.
 
 ## Modules
 

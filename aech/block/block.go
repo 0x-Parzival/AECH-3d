@@ -2,9 +2,13 @@
 package block
 
 import (
+	"crypto/ecdsa"          // Added
+	"crypto/elliptic"       // Added
+	crypto_rand "crypto/rand" // Added with alias
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log" // Added
 	"strconv"
 	"strings"
 	"time"
@@ -13,37 +17,71 @@ import (
 // Transaction represents a single transaction in the AECH system.
 // It includes details about the sender, receiver, amount, and a signature.
 type Transaction struct {
-	// ID is the unique identifier for the transaction, typically a hash of its content.
-	ID string
-	// Sender is the address of the account sending the transaction.
-	Sender string
-	// Receiver is the address of the account receiving the transaction.
-	Receiver string
-	// Amount is the value being transferred in the transaction.
-	Amount float64
-	// Timestamp is the Unix nano timestamp of when the transaction was created.
-	Timestamp int64 // Changed from time.Time
-	// Signature is the cryptographic signature of the transaction, used for verification.
-	// In the current stub implementation, this is a dummy value.
-	Signature []byte // Changed from string
+	ID        string  `json:"id"`        // Hash of tx content (will be set by server after verification for now)
+	Timestamp int64   `json:"timestamp"` // Epoch time (client-set)
+	Sender    string  `json:"sender"`    // Sender’s address or identifier (client-set)
+	Receiver  string  `json:"receiver"`  // Receiver’s address (client-set)
+	Amount    float64 `json:"amount"`    // Amount to transfer (client-set, kept as float64)
+	Signature string  `json:"signature"` // Hex-encoded signature (client-set)
+	PubKey    string  `json:"pubKey"`    // Hex-encoded sender’s public key (client-set)
 }
 
 // NewTransaction creates and returns a new Transaction instance.
 // It initializes the transaction with the sender, receiver, and amount,
 // sets the current timestamp (UnixNano), generates a unique ID, and signs the transaction (currently a stub).
-func NewTransaction(sender string, receiver string, amount float64) *Transaction {
-	tx := &Transaction{
-		Sender:    sender,
-		Receiver:  receiver,
-		Amount:    amount,
-		Timestamp: time.Now().UnixNano(), // Set Timestamp as int64
+// NewTransaction creates and returns a new cryptographically signed Transaction instance.
+// This version is primarily for server-side generation (e.g., for testing or coinbase).
+// The 'senderName' is a conceptual identifier; a new key pair is generated for this transaction.
+func NewTransaction(senderName string, receiverName string, amount float64) *Transaction {
+	// 1. Generate ECDSA key pair for the sender
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), crypto_rand.Reader)
+	if err != nil {
+		log.Printf("ERROR: NewTransaction - Failed to generate ECDSA key pair: %v", err)
+		return nil
 	}
-	// Generate ID: SHA256(sender + receiver + amount + timestamp)
-	idData := fmt.Sprintf("%s%s%s%d", sender, receiver, strconv.FormatFloat(amount, 'f', -1, 64), tx.Timestamp)
-	hash := sha256.Sum256([]byte(idData))
-	tx.ID = hex.EncodeToString(hash[:])
+	pubKeyCompressedBytes := elliptic.MarshalCompressed(elliptic.P256(), privKey.X, privKey.Y)
+	pubKeyHex := hex.EncodeToString(pubKeyCompressedBytes)
 
-	_ = tx.Sign() // Call Sign to set dummy signature, explicitly ignore error for stub
+	tx := &Transaction{
+		Sender:    senderName,            // User-friendly sender name or identifier
+		Receiver:  receiverName,
+		Amount:    amount,
+		Timestamp: time.Now().UnixNano(),
+		PubKey:    pubKeyHex,             // Hex-encoded compressed public key
+		// ID and Signature will be set next.
+	}
+
+	// 2. Set Transaction ID (hash of content as defined by HashTransactionContent)
+	// HashTransactionContent uses tx.Sender, tx.Receiver, tx.Amount, tx.Timestamp.
+	// It does NOT include PubKey or Signature itself in the hash.
+	idHashBytes := HashTransactionContent(*tx) // This function is in verify.go (same package)
+	tx.ID = hex.EncodeToString(idHashBytes)
+
+	// 3. Sign the transaction ID (which is the hash of the content)
+	r, s, err := ecdsa.Sign(crypto_rand.Reader, privKey, idHashBytes) // Sign the ID hash
+	if err != nil {
+		log.Printf("ERROR: NewTransaction - Failed to sign transaction %s: %v", tx.ID, err)
+		return nil
+	}
+
+	// Convert r, s to fixed-size byte slices (32 bytes each for P256) and concatenate
+	rBytes := r.Bytes()
+	sBytes := s.Bytes()
+	
+	// Pad r and s to 32 bytes. This is crucial for consistent signature representation.
+	signatureR := make([]byte, 32)
+	signatureS := make([]byte, 32)
+	copy(signatureR[32-len(rBytes):], rBytes)
+	copy(signatureS[32-len(sBytes):], sBytes)
+	
+	signatureBytes := append(signatureR, signatureS...)
+	tx.Signature = hex.EncodeToString(signatureBytes)
+
+	// The old call to tx.Sign() is no longer needed as we've implemented actual signing.
+	// This line should be removed if present from the old NewTransaction:
+	// _ = tx.Sign() 
+
+	log.Printf("New signed transaction created: ID=%s, Sender=%s, PubKey=%s", tx.ID, tx.Sender, tx.PubKey)
 	return tx
 }
 
@@ -52,9 +90,10 @@ func NewTransaction(sender string, receiver string, amount float64) *Transaction
 // The signature is stored as []byte.
 // It returns an error if signing fails (though in the stub, it always returns nil).
 func (tx *Transaction) Sign() error {
-	// Stub implementation
-	tx.Signature = []byte("signed-" + tx.ID) // Store as []byte
-	return nil
+	// Old dummy signing logic - to be replaced by client-side signing
+	// and new server-side verification.
+	// tx.Signature = []byte("signed-" + tx.ID) // Store as []byte
+	return nil // Or perhaps return an error indicating it's deprecated
 }
 
 // Validate checks if the transaction is valid.
@@ -118,7 +157,7 @@ func (b *Block3D) GenerateHash() string {
 			tx.Receiver,
 			tx.Amount,
 			tx.Timestamp, // This is int64
-			hex.EncodeToString(tx.Signature), // Signature is []byte
+			tx.Signature, // Signature is now string (hex-encoded)
 		)
 		transactionRepresentations = append(transactionRepresentations, txString)
 	}

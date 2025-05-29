@@ -4,9 +4,11 @@ import (
 	"aech/block"
 	"aech/plane"
 	"aech/txpool"
+	"aech/ws"      // Added for WebSocket integration
 	"github.com/gin-gonic/gin"
-	"encoding/hex" // Added for ID calculation
-	"fmt"          // Added for error formatting
+	"encoding/hex"  // Added for ID calculation
+	"encoding/json" // Added for WebSocket message marshaling
+	"fmt"           // Added for error formatting
 	"log"
 	"math"    // Added for pagination (math.Ceil)
 	"net/http"
@@ -25,6 +27,7 @@ const (
 type APIServer struct {
 	plane  *plane.Plane3D
 	txpool *txpool.TxPool
+	wsHub  *ws.Hub // Added WebSocket hub
 }
 
 // AddBlockRequest defines the expected request body for adding a new block.
@@ -38,9 +41,12 @@ type AddBlockRequest struct {
 // RunServer initializes and starts the Gin HTTP server.
 // It sets up routes for block and transaction interactions.
 func RunServer(port string, p *plane.Plane3D, tp *txpool.TxPool) {
+	hub := ws.NewHub() // Initialize the WebSocket hub
+
 	server := &APIServer{
 		plane:  p,
 		txpool: tp,
+		wsHub:  hub, // Pass the hub instance
 	}
 
 	r := gin.Default()
@@ -68,6 +74,9 @@ func RunServer(port string, p *plane.Plane3D, tp *txpool.TxPool) {
 
 	// Plane routes
 	r.GET("/plane/grid", server.getPlaneGridHandler)
+
+	// WebSocket route
+	r.GET("/ws", server.handleWebSocketConnections)
 
 	// TODO: Add other endpoints here as they are developed
 
@@ -247,6 +256,17 @@ func (s *APIServer) addTransactionHandler(c *gin.Context) {
 
 	// Success Response
 	log.Printf("Transaction %s accepted and added to pool", receivedTx.ID)
+
+	// Broadcast WebSocket message for new transaction
+	wsMsgTx := ws.WSMessage{Type: "new_tx", Data: receivedTx}
+	jsonMessageTx, err := json.Marshal(wsMsgTx)
+	if err != nil {
+		log.Printf("Error marshaling new_tx WebSocket message: %v", err)
+		// Don't fail the HTTP request, just log the WS broadcast error
+	} else {
+		s.wsHub.Broadcast(jsonMessageTx)
+	}
+
 	c.JSON(http.StatusCreated, gin.H{"status": "Transaction accepted", "id": receivedTx.ID}) // Use StatusCreated
 }
 
@@ -423,6 +443,15 @@ func (s *APIServer) addBlockHandler(c *gin.Context) {
 		log.Printf("Finished removing transactions from pool for block %s.", newBlock.Hash)
 	}
 
+	// Broadcast WebSocket message for new block
+	wsMsgBlock := ws.WSMessage{Type: "new_block", Data: newBlock}
+	jsonMessageBlock, err := json.Marshal(wsMsgBlock)
+	if err != nil {
+		log.Printf("Error marshaling new_block WebSocket message: %v", err)
+		// Don't fail the HTTP request, just log the WS broadcast error
+	} else {
+		s.wsHub.Broadcast(jsonMessageBlock)
+	}
 
 	c.JSON(http.StatusCreated, newBlock)
 }
@@ -435,6 +464,11 @@ func (s *APIServer) getPlaneGridHandler(c *gin.Context) {
 	// Currently, GetAllBlocks doesn't return an error.
 	// If it did, error handling would be needed here.
 	c.JSON(http.StatusOK, blocks)
+}
+
+// handleWebSocketConnections is a method on APIServer that wraps ws.HandleConnections.
+func (s *APIServer) handleWebSocketConnections(c *gin.Context) {
+	ws.HandleConnections(s.wsHub)(c) // Calls the handler from the ws package
 }
 
 // CORSMiddleware sets up permissive CORS headers for development.

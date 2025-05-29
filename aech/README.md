@@ -235,6 +235,62 @@ curl "http://localhost:8080/txpool?page=1&limit=20"
 **Response (Success - 200 OK):**
 A paginated list of `block.Block3D` objects, same structure as `GET /blocks`.
 
+### WebSocket Real-Time Updates
+
+**Endpoint:** `GET /ws`
+
+**Purpose:** Establishes a WebSocket connection for receiving real-time updates from the server.
+Once connected, the server will push messages when new transactions are added to the pool or new blocks are created.
+
+**Connection:**
+*   Clients should connect to `ws://localhost:PORT/ws` (or `wss://` if using TLS, though current setup is HTTP). Replace `PORT` with the actual port the server is running on (default `8080`).
+
+**Message Format (Server to Client):**
+Messages from the server are JSON objects with the following structure:
+```json
+{
+  "type": "event_type_string",
+  "data": {} 
+}
+```
+*   `type` (string): Indicates the type of event. Possible values:
+    *   `"new_tx"`: A new transaction has been accepted into the transaction pool. The `data` field will contain the full `block.Transaction` object.
+    *   `"new_block"`: A new block has been added to the plane. The `data` field will contain the full `block.Block3D` object.
+*   `data` (object): The actual payload of the event. The structure of this object depends on the `type`.
+
+**Example `new_tx` Message:**
+```json
+{
+  "type": "new_tx",
+  "data": {
+    "ID": "tx_hash_id",
+    "Timestamp": 1678886500000000000,
+    "Sender": "Alice",
+    "Receiver": "Bob",
+    "Amount": 10.5,
+    "Signature": "hex_encoded_signature",
+    "PubKey": "hex_encoded_compressed_public_key"
+  }
+}
+```
+
+**Example `new_block` Message:**
+```json
+{
+  "type": "new_block",
+  "data": {
+    "X": 1,
+    "Y": 2,
+    "Z": 0,
+    "Timestamp": "2023-10-27T10:05:00.123456789Z",
+    "Hash": "generated_block_hash",
+    "PreviousHash": "previous_block_hash_or_0",
+    "Transactions": [ /* array of block.Transaction objects */ ]
+  }
+}
+```
+**Note:** Clients primarily listen for messages. While the connection is bi-directional, the current backend implementation does not process messages sent from the client to the server over WebSocket (they are logged and ignored).
+
 ## Modules
 
 The AECH system is organized into the following packages:

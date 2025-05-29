@@ -6,8 +6,20 @@ import (
 	"aech/plane"
 	"aech/txpool"
 	"time"
-	"aech/api" // May need to uncomment or add this
+	"aech/api"
+
+	"log" // Added for logging environment loading and port info
+	"os"  // Added for environment variable access
+	"github.com/joho/godotenv" // Added for .env file support
 )
+
+func init() {
+	// Load .env file. It's not fatal if it's not found.
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found or error loading .env file, using default or OS environment variables")
+	}
+}
 
 func main() {
 	// Initialize the transaction pool

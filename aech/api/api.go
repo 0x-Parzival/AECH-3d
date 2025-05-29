@@ -33,6 +33,12 @@ func RunServer(port string, p *plane.Plane3D, tp *txpool.TxPool) {
 
 	r := gin.Default()
 
+	// Middleware for Request Body Size Limit
+	r.Use(func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1024*1024) // 1 MB limit
+		c.Next()
+	})
+
 	// Block routes
 	r.GET("/blocks", server.getBlocksHandler)
 	r.GET("/block/:id", server.getBlockByIDHandler)
@@ -97,6 +103,26 @@ func (s *APIServer) addTransactionHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body", "details": err.Error()})
 		return
 	}
+
+	// Input Validation for addTransactionHandler
+	const maxNameLength = 256 // Define a reasonable max length
+	if len(clientTxData.Sender) > maxNameLength {
+		log.Printf("AddTransaction failed: sender name too long (max %d chars). Length: %d", maxNameLength, len(clientTxData.Sender))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "sender name too long", "max_length": maxNameLength})
+		return
+	}
+	if len(clientTxData.Receiver) > maxNameLength {
+		log.Printf("AddTransaction failed: receiver name too long (max %d chars). Length: %d", maxNameLength, len(clientTxData.Receiver))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver name too long", "max_length": maxNameLength})
+		return
+	}
+	if clientTxData.Amount <= 0 {
+		log.Printf("AddTransaction failed: amount must be positive. Amount: %f", clientTxData.Amount)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be positive"})
+		return
+	}
+	// The check for empty sender/receiver is already there, which is good.
+
 
 	// Sign the transaction (as per current dummy signing logic)
 	// NewTransaction already calls Sign, but if we receive a raw tx, we should sign it.
@@ -181,6 +207,14 @@ func (s *APIServer) addBlockHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body", "details": err.Error()})
 		return
 	}
+
+	// Input Validation for addBlockHandler coordinates
+	if req.X < 0 || req.Y < 0 || req.Z < 0 {
+		log.Printf("addBlockHandler failed: coordinates must be non-negative. X: %d, Y: %d, Z: %d", req.X, req.Y, req.Z)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "coordinates must be non-negative"})
+		return
+	}
+	// Optional: Upper bound checks can be added here if needed.
 
 	log.Printf("Block creation initiated for coordinates (%d,%d,%d)", req.X, req.Y, req.Z)
 

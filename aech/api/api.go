@@ -12,9 +12,13 @@ import (
 	"log"
 	"math"    // Added for pagination (math.Ceil)
 	"net/http"
+	"os"      // Added for CORS environment variable
 	"regexp"  // Added for name validation
 	"strconv" // Added for pagination (Atoi)
 	"strings" // Added for Content-Type check
+	"time"    // Added for health check timestamp
+
+	"github.com/gin-contrib/cors" // Added for CORS middleware
 )
 
 const (
@@ -22,6 +26,17 @@ const (
 	DefaultLimit = 10
 	MaxLimit     = 100
 )
+
+// getAllowedOrigins retrieves the list of allowed CORS origins from the
+// CORS_ALLOWED_ORIGINS environment variable.
+// If the variable is empty or not set, it defaults to allowing all origins ("*").
+func getAllowedOrigins() []string {
+	envOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if envOrigins == "" {
+		return []string{"*"} // Default to all origins for development or if not set
+	}
+	return strings.Split(envOrigins, ",")
+}
 
 // APIServer holds instances needed by the API handlers.
 type APIServer struct {
@@ -51,8 +66,20 @@ func RunServer(port string, p *plane.Plane3D, tp *txpool.TxPool) {
 
 	r := gin.Default()
 
+	// Configure and use CORS middleware (from gin-contrib/cors)
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowOrigins = getAllowedOrigins()
+	// DefaultConfig allows common methods (GET, POST, PUT, HEAD, OPTIONS) and headers.
+	// To be more specific like the original custom middleware:
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Authorization", "Accept", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "X-Requested-With", "Cache-Control"}
+	corsConfig.AllowCredentials = true
+	// corsConfig.ExposeHeaders = []string{"Content-Length"} // Optional, if needed by client
+
+	r.Use(cors.New(corsConfig)) // Use the new CORS middleware
+
 	// Register global error handler first
-	r.Use(CORSMiddleware()) // Add CORS middleware
+	// r.Use(CORSMiddleware()) // Remove old custom CORS middleware
 	r.Use(globalErrorHandler())
 
 	// Middleware for Request Body Size Limit
@@ -77,6 +104,9 @@ func RunServer(port string, p *plane.Plane3D, tp *txpool.TxPool) {
 
 	// WebSocket route
 	r.GET("/ws", server.handleWebSocketConnections)
+
+	// Health check route
+	r.GET("/health", healthCheck)
 
 	// TODO: Add other endpoints here as they are developed
 
@@ -464,6 +494,16 @@ func (s *APIServer) getPlaneGridHandler(c *gin.Context) {
 	// Currently, GetAllBlocks doesn't return an error.
 	// If it did, error handling would be needed here.
 	c.JSON(http.StatusOK, blocks)
+}
+
+// healthCheck is a simple handler to confirm the API server is running.
+func healthCheck(c *gin.Context) {
+	// Log the health check request
+	log.Printf("Incoming %s %s request", c.Request.Method, c.Request.URL.Path)
+	c.JSON(http.StatusOK, gin.H{
+		"status": "ok",
+		"time":   time.Now().Format(time.RFC3339Nano), // Optional: add a timestamp
+	})
 }
 
 // handleWebSocketConnections is a method on APIServer that wraps ws.HandleConnections.

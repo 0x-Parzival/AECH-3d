@@ -14,10 +14,35 @@ It aims to demonstrate basic concepts of blockchain technology, including:
 
 To start the AECH backend server:
 
+**1. Configure Port (Optional):**
+   Create a `.env` file in the `aech` project root (you can copy `.env.example`):
+   ```env
+   PORT=8081 
+   ```
+   If `.env` is not present or `PORT` is not set, the server defaults to port `8080`.
+
+**2. Run Directly:**
+   ```bash
+   go run main.go
+   ```
+
+**3. Build and Run Executable (Recommended for stable execution):**
+   ```bash
+   # From the aech directory
+   go build -o aech_server main.go
+   ./aech_server
+   ```
+The server will log its startup and the port it's using. You'll see further log messages in your console for incoming requests and other operations.
+
+## Running Tests
+
+To run the unit tests for the various packages:
+
 ```bash
-go run main.go
+# From the aech directory
+go test ./...
 ```
-The server will typically start on port 8080. You'll see log messages in your console indicating the server has started and when requests come in.
+This command will execute all test files (`*_test.go`) in the current directory and its subdirectories. Add the `-v` flag for verbose output: `go test -v ./...`.
 
 ## API Reference
 

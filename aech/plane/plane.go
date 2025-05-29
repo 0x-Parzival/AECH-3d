@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"aech/block" // Assuming aech is the module name
 	"log"        // Added for logging
+	"aech/crosschain" // Added import
+	"time"            // Added import
 )
 
 // Plane3D struct holds blocks in a 3D grid using a map with string keys.
@@ -43,6 +45,21 @@ func (p *Plane3D) AddBlock(x, y, z int, blk *block.Block3D) error {
 	// blk.X, blk.Y, blk.Z = x, y, z // Example if block has these fields and they should be synced
 	p.Grid[key] = blk
 	log.Printf("Block %s added to plane at (%d,%d,%d)", blk.Hash, x, y, z)
+
+	// Simulate sending a cross-chain message about this new block
+	msg := crosschain.CrossChainMessage{
+		FromPlaneID: "current_plane_A", // Placeholder - In a real system, this would be dynamic
+		ToPlaneID:   "target_plane_B",  // Placeholder - Target determined by logic
+		BlockHash:   blk.Hash,
+		Payload:     fmt.Sprintf("New block %s added at X:%d, Y:%d, Z:%d with %d transaction(s)", blk.Hash, x, y, z, len(blk.Transactions)),
+		Timestamp:   time.Now(),
+	}
+	// In this mock, SendMessage might return an error if the underlying (mocked) send mechanism had an issue.
+	// For now, we log it but don't fail the AddBlock operation.
+	if sendMessageErr := crosschain.SendMessage(msg); sendMessageErr != nil {
+		log.Printf("Error sending cross-chain message for block %s: %v", blk.Hash, sendMessageErr)
+	}
+
 	return nil
 }
 

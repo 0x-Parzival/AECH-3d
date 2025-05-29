@@ -7,6 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
+	"regexp"  // Added for name validation
+	"strings" // Added for Content-Type check
 )
 
 // APIServer holds instances needed by the API handlers.
@@ -33,11 +35,17 @@ func RunServer(port string, p *plane.Plane3D, tp *txpool.TxPool) {
 
 	r := gin.Default()
 
+	// Register global error handler first
+	r.Use(CORSMiddleware()) // Add CORS middleware
+	r.Use(globalErrorHandler())
+
 	// Middleware for Request Body Size Limit
 	r.Use(func(c *gin.Context) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1024*1024) // 1 MB limit
 		c.Next()
 	})
+
+	r.Use(RequireJSONContentType()) // Add Content-Type check middleware
 
 	// Block routes
 	r.GET("/blocks", server.getBlocksHandler)
@@ -123,6 +131,19 @@ func (s *APIServer) addTransactionHandler(c *gin.Context) {
 	}
 	// The check for empty sender/receiver is already there, which is good.
 
+	// Define and use regex for name validation
+	var validNamePattern = regexp.MustCompile("^[a-zA-Z0-9_-]+$")
+
+	if !validNamePattern.MatchString(clientTxData.Sender) {
+		log.Printf("AddTransaction failed: sender name contains invalid characters. Sender: '%s'", clientTxData.Sender)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "sender name contains invalid characters", "details": "Sender must be alphanumeric and can include _ or -."})
+		return
+	}
+	if !validNamePattern.MatchString(clientTxData.Receiver) {
+		log.Printf("AddTransaction failed: receiver name contains invalid characters. Receiver: '%s'", clientTxData.Receiver)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver name contains invalid characters", "details": "Receiver must be alphanumeric and can include _ or -."})
+		return
+	}
 
 	// Sign the transaction (as per current dummy signing logic)
 	// NewTransaction already calls Sign, but if we receive a raw tx, we should sign it.
@@ -306,4 +327,79 @@ func (s *APIServer) getPlaneGridHandler(c *gin.Context) {
 	// Currently, GetAllBlocks doesn't return an error.
 	// If it did, error handling would be needed here.
 	c.JSON(http.StatusOK, blocks)
+}
+
+// CORSMiddleware sets up permissive CORS headers for development.
+// For production, origins should be restricted.
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*") // Allow any origin
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent) // Use 204 No Content for OPTIONS preflight
+			return
+		}
+		c.Next()
+	}
+}
+
+// RequireJSONContentType is a middleware that ensures requests that typically have a body
+// (POST, PUT, PATCH) have the Content-Type header set to "application/json".
+func RequireJSONContentType() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		method := c.Request.Method
+		if method == "POST" || method == "PUT" || method == "PATCH" {
+			contentType := c.GetHeader("Content-Type")
+			// It's common for Content-Type to include charset, e.g., "application/json; charset=utf-8"
+			// So, we check if it starts with "application/json".
+			if !strings.HasPrefix(strings.ToLower(contentType), "application/json") {
+				log.Printf("Request with method %s rejected due to invalid Content-Type: '%s'", method, contentType)
+				c.AbortWithStatusJSON(http.StatusUnsupportedMediaType, gin.H{
+					"error":   "Unsupported Media Type",
+					"details": "Requests with a body (POST, PUT, PATCH) must have Content-Type set to 'application/json'.",
+				})
+				return
+			}
+		}
+		c.Next()
+	}
+}
+
+// globalErrorHandler is a middleware to catch panics and respond with a JSON error.
+// It also logs any errors that were added to c.Errors but not handled by other middleware/handlers.
+func globalErrorHandler() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        defer func() {
+            if r := recover(); r != nil {
+                log.Printf("Panic recovered in globalErrorHandler: %v", r)
+                // Ensure a response hasn't already been sent
+                if !c.Writer.Written() {
+                    c.JSON(http.StatusInternalServerError, gin.H{
+                        "error":   "Internal Server Error",
+                        "details": "The server encountered an unrecoverable situation.",
+                    })
+                }
+                c.Abort() // Abort further processing
+            }
+        }()
+
+        c.Next() // Process request
+
+        // After request, log any errors that were attached to the context but not handled.
+        // This is useful for debugging if a handler sets c.Error() but doesn't abort.
+        // Note: Most of our handlers already use c.JSON for errors, which aborts.
+        if len(c.Errors) > 0 {
+            for _, e := range c.Errors {
+                log.Printf("Unhandled error in context: %v", e.Err)
+            }
+            // Optionally, if no response was written, send a generic error.
+            // However, this might interfere if a later middleware is supposed to handle it.
+            // if !c.Writer.Written() && !c.IsAborted() {
+            //    c.JSON(http.StatusInternalServerError, gin.H{"error": "Unhandled error occurred"})
+            // }
+        }
+    }
 }

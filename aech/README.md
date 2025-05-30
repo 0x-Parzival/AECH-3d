@@ -10,6 +10,10 @@ It aims to demonstrate basic concepts of blockchain technology, including:
 - Basic Consensus (stubbed)
 - API for interaction
 
+## Project Vision and Detailed Requirements
+
+For a comprehensive understanding of the AECH project's vision, full scope, features, and detailed software requirements, please see the [Software Requirements Specification (SRS) document](./SRS.md).
+
 ## Run the Server
 
 To start the AECH backend server:
